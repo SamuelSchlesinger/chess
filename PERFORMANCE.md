@@ -2,7 +2,14 @@
 
 This documents how the board-operation design was chosen — every claim below is
 backed by `cargo bench` (criterion, release, `lto=fat`, `codegen-units=1`) on the
-development machine (Apple Silicon). Reproduce with `cargo bench`.
+development machine (Apple Silicon). Reproduce with `cargo bench`; the fast
+iteration harness is `cargo run --release --example nps`.
+
+> **Two optimization rounds.** Round 1 (below) took the move generator from a
+> classical-rays + make/unmake-filter baseline to magic bitboards + a pin-aware
+> legal generator (~73 → ~460 Mnps). Round 2 (["Locality & micro-arch pass"](#round-2-locality--micro-architecture-pass))
+> pushed a further **+13%** with locality and micro-architectural work — and,
+> just as importantly, *rejected* three plausible ideas that measured as noise.
 
 ## Headline
 
@@ -111,3 +118,48 @@ cargo bench -- attacks        # magic vs classical, per slider
 cargo bench -- 'movegen/legal'
 cargo bench -- perft
 ```
+
+## Round 2: locality & micro-architecture pass
+
+Measured with the `nps` example (aggregate over startpos d6, kiwipete d5,
+position3 d6, midgame d5; best of 4 runs). A code-level investigation (4
+parallel agents reading the committed source) proposed and ranked these; each
+was implemented and measured individually, gated by the 6838-position perft
+suite and the differential generator test.
+
+| Step | Change | Aggregate Mnps | Δ |
+|------|--------|---------------:|---|
+| — | round-1 result (session baseline) | 578.6 | — |
+| 1 | **Set-wise pawn generation** — unpinned pawns move via bitboard shifts; pinned pawns and en passant still exact per-pawn | 609.1 | +5.3% |
+| 2 | **Compile-time magic tables** — embed the searched magics; build masks/shifts/offsets and the ~108k-entry attack tables as `const`/`static` in `.rodata`. No `LazyLock` atomic, no heap `Box`, no runtime search on the lookup path | 619.2 | +1.7% |
+| 3 | **Fused checker + pin detection** — one king-ray sniper pass produces both `checkers` and `pinned`, replacing three separate king-slider computations | 631.9 | +2.0% |
+| 4 | **Bounds-check elision** — `Square/File/Rank::index()` mask with `&63`/`&7` so the compiler proves every square-keyed table lookup is in-bounds | 641.5 | +1.5% |
+| 5 | **Slider/make-move micro-opts** — visit each slider type once (queens via `queen_attacks`); skip the castling-rights table loads once no rights remain | 653.5 | +1.9% |
+| 6 | **Single-pass hash** in FEN/unpack (`finalize_hash`) — no perft effect; speeds `from_fen` and the batch `Packed::unpack` path | 653.5 | — |
+
+**Round-2 total: 578.6 → 653.5 Mnps (+12.9%).** Correctness unchanged: full
+perft suite to depth 5, the 6 CPW landmarks to depth 6, and the differential
+generator test all still pass exactly.
+
+### Memory layout / batch processing
+
+- The working `Board` stays 144 B: `pieces[6]` + `colors[2]` bitboards are 64 B
+  (one cache line, the move-gen working set) and the `[u8; 64]` mailbox — only
+  touched by make/unmake — is the next line. The investigation confirmed this is
+  already cache-optimal for the perft hot path (move generation never reads the
+  mailbox); density lives in the separate 34-B `Packed` form.
+- Batch path (`batch` bench): a dense `Vec<Packed>` streams at **~23M boards/s**
+  unpacked and **~12M boards/s** unpacked + legal-move-generated. 34 B/position
+  keeps a million positions in ~34 MB and cache-friendly under sequential scan.
+
+### Measured and rejected (no free lunch)
+
+These were predicted to help but measured as noise, so they were **not** adopted
+— recorded here so the negative results aren't silently lost:
+
+| Idea | Predicted | Measured | Verdict |
+|------|-----------|----------|---------|
+| `RUSTFLAGS=-C target-cpu=native` | some | 578.6 → 571.6 (−1%, noise) | No PEXT on ARM; the magic multiply is already native. Rejected. |
+| `#[repr(align(64))]` on `Board` | better line packing | 619.2 → 613.8 (noise) | The hot bitboards already pack into one line; alignment only bloats `Board` 144 → 192 B. Reverted. |
+| Profile-guided optimization (PGO) | 5–12% | 653.5 → 657.3 (+0.6%) | `lto=fat` + already-elided branches + memory-latency-bound table reads leave little for PGO. Not worth the build complexity. |
+| Cached incremental `occupied` bitboard | — | (investigation: net ~0/negative) | `occupied()` is computed once per `generate_legal` and threaded; caching adds make/unmake work. Not pursued. |
