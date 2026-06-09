@@ -70,6 +70,43 @@ cargo test --release                 # fast suite
 cargo test --release -- --ignored    # deep perft (full suite to depth 5, landmarks to depth 6)
 ```
 
+## Analysis engine
+
+A full-strength analysis engine is built on top of the move generator:
+
+- **Search**: iterative-deepening negamax with alpha-beta (PVS), a Zobrist-keyed
+  transposition table, quiescence search, move ordering (TT move, MVV-LVA,
+  killers, history), null-move pruning, late-move reductions, check extensions,
+  aspiration windows, mate scoring, and repetition / 50-move / insufficient-
+  material draw detection.
+- **Evaluation** is swappable behind the [`Evaluator`] trait (with NNUE-ready
+  incremental `on_make` / `on_unmake` hooks); the default is a tapered **PeSTO**
+  handcrafted eval (material + piece-square tables + bishop pair + pawn
+  structure). The search is generic over the evaluator.
+- Solves **275/300** of the Win-at-Chess tactical suite at 300 ms/move; ~6–8 M
+  nodes/sec.
+
+```rust
+use chess::{Board, Engine, Limits};
+
+let board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")?;
+let mut engine = Engine::new();
+let analysis = engine.analyze(&board, &Limits::movetime(1000));
+println!("{} ({:+} cp), pv {:?}", analysis.best_move, analysis.score, analysis.pv);
+# Ok::<(), chess::FenError>(())
+```
+
+As a UCI engine (playable in any GUI, or with `cutechess-cli`):
+
+```sh
+cargo run --release --bin chess-uci
+# uci / isready / position startpos moves e2e4 e7e5 / go movetime 2000
+
+cargo run --release --example analyze "<FEN>" 2000   # one-shot analysis
+```
+
+[`Evaluator`]: crate::Evaluator
+
 ## Benchmarks
 
 ```sh
