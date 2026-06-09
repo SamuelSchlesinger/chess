@@ -129,6 +129,13 @@ impl Game {
         Some(mv)
     }
 
+    /// Zobrist keys of every position so far, including the current one (one per
+    /// ply plus the initial position). Useful for seeding an engine's
+    /// repetition history during self-play.
+    pub fn position_keys(&self) -> &[u64] {
+        &self.hashes
+    }
+
     /// How many times the current position has occurred (including now).
     pub fn repetition_count(&self) -> usize {
         let current = self.board.hash();
