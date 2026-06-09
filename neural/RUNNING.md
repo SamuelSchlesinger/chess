@@ -41,10 +41,12 @@ train (q-target, anchor-lag-1) → 200-game Elo gate (keep only ≥ +5 Elo vs be
   20–50 generations is the actual route past SF. Same command, bigger params,
   plus the (built, verified) GPU-batched leaf evaluation:
   ```bash
-  uv pip install --python neural/.venv/bin/python torch numpy   # CUDA build
-  tmux new-session -d -s chesstrain \
-    "BATCH_EVAL=1 SP_THREADS=256 neural/run_gpu_program.sh 30 20000 800 >> logs/program.log 2>&1"
-  # or equivalently: BATCH_EVAL=1 SP_THREADS=256 neural/launch_program.sh start 30 20000 800
+  git clone <this repo>   # runtime state (logs/, nets/, data/) is untracked — clean slate
+  rsync -a m4:projects/games/chess/data/sp_sf* m4:projects/games/chess/data/sp2_sf* data/
+       # ^ 94 MB of SF-labeled positions; required by the gen0 warm-start (FATAL if absent)
+  cargo build --release
+  uv venv neural/.venv && uv pip install --python neural/.venv/bin/python torch numpy  # CUDA build
+  BATCH_EVAL=1 SP_THREADS=256 neural/launch_program.sh start 30 20000 800
   ```
   BATCH_EVAL=1 runs self-play leaf evals through neural/eval_server.py on the
   GPU (virtual-loss K-leaf batching x games-in-flight; see GPU_PLAN.md for the
