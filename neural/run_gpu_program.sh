@@ -38,13 +38,19 @@ if [ -z "${BATCH_EVAL+x}" ] && [ -f "$CFG" ]; then . "$CFG"; fi
 BATCH_EVAL=${BATCH_EVAL:-0}
 SP_THREADS=${SP_THREADS:-${4:-256}}
 BATCH_LEAVES=${BATCH_LEAVES:-16}
-printf 'BATCH_EVAL=%s\nSP_THREADS=%s\nBATCH_LEAVES=%s\n' \
-  "$BATCH_EVAL" "$SP_THREADS" "$BATCH_LEAVES" > "$CFG"
+MAX_BATCH=${MAX_BATCH:-4096}
+MAX_WAIT_MS=${MAX_WAIT_MS:-1.0}
+printf 'BATCH_EVAL=%s\nSP_THREADS=%s\nBATCH_LEAVES=%s\nMAX_BATCH=%s\nMAX_WAIT_MS=%s\n' \
+  "$BATCH_EVAL" "$SP_THREADS" "$BATCH_LEAVES" "$MAX_BATCH" "$MAX_WAIT_MS" > "$CFG"
 SOCK="/tmp/chess_eval_$$.sock"
 SERVER_PID=""
+# Each in-flight game costs ~3 fds (2 socket ends + a shard file); the default
+# soft limit of 1024 dies at SP_THREADS=512 with a flaky startup panic.
+ulimit -n 65536 2>/dev/null || true
 
 start_server() { # $1 = net to serve
-  $PY neural/eval_server.py --net "$1" --socket "$SOCK" --max-batch 2048 \
+  $PY neural/eval_server.py --net "$1" --socket "$SOCK" \
+      --max-batch "$MAX_BATCH" --max-wait-ms "$MAX_WAIT_MS" \
       >> logs/eval_server.log 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 240); do

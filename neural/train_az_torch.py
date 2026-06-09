@@ -195,7 +195,11 @@ def main():
     n = len(feats)
     print(f"loaded {n:,} positions in {time.time()-t0:.0f}s")
 
-    Fpad = torch.tensor(pad_features(feats), device=dev)
+    # Features stay on the CPU as numpy; minibatches move to the device on
+    # demand. (At GPU scale — millions of positions — device-resident features
+    # and especially a dense [n, POLICY] policy target would OOM: 3M positions
+    # would need ~49 GB for the targets alone.)
+    Fnp = pad_features(feats)
     net = Net().to(dev)
     zero_pad_row(net)
     if args.warm:
@@ -204,15 +208,16 @@ def main():
         with torch.no_grad():
             net.p.weight.zero_(); net.p.bias.zero_()  # near-uniform priors
 
-    # Build the value target.
-    Vt = torch.tensor(z, device=dev)
+    # Build the value target (on CPU; indexed per batch).
+    Vt = torch.tensor(z)
     if args.records and args.value_blend is not None:
         anchor_path = args.anchor or args.warm
         anc = Net().to(dev); load_azn(anc, anchor_path, dev); anc.eval()
         with torch.no_grad():
-            va = torch.cat([anc(Fpad[i:i+8192])[0] for i in range(0, n, 8192)])
+            va = torch.cat([anc(torch.from_numpy(Fnp[i:i+8192]).to(dev))[0].cpu()
+                            for i in range(0, n, 8192)])
         lam, beta = args.value_blend, args.beta
-        qy = torch.tensor(beta*z + (1-beta)*q, device=dev)
+        qy = torch.tensor(beta*z + (1-beta)*q)
         Vt = lam*qy + (1-lam)*va
         print(f"value target = {lam:.2f}*({beta:.2f}z+{1-beta:.2f}q) + {1-lam:.2f}*anchor")
 
@@ -222,14 +227,17 @@ def main():
                 pm.requires_grad_(False)
         print("value+trunk frozen; policy only")
 
-    Pt = None
-    if pidx is not None:
-        Pt = torch.zeros((n, POLICY), dtype=torch.float32)
-        for i in range(n):
-            # accumulate=True: promotions share a move_index in older records
-            Pt[i].index_put_((torch.from_numpy(pidx[i]),), torch.from_numpy(pp[i]),
-                             accumulate=True)
-        Pt = Pt.to(dev)
+    def policy_batch(rows):
+        # Ragged -> padded (index, prob) for one minibatch. Pad rows carry
+        # prob 0, so they contribute nothing to the cross-entropy.
+        maxm = max(len(pidx[j]) for j in rows)
+        mi = np.zeros((len(rows), maxm), dtype=np.int64)
+        mp = np.zeros((len(rows), maxm), dtype=np.float32)
+        for k, j in enumerate(rows):
+            m = len(pidx[j])
+            mi[k, :m] = pidx[j]
+            mp[k, :m] = pp[j]
+        return torch.from_numpy(mi).to(dev), torch.from_numpy(mp).to(dev)
 
     opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad],
                            lr=args.lr, betas=(0.9, 0.99))
@@ -237,18 +245,20 @@ def main():
     for ep in range(args.epochs):
         perm = rng.permutation(n); run = 0.0; nb = 0; te = time.time()
         for i in range(0, n, args.batch):
-            b = torch.tensor(perm[i:i+args.batch], device=dev)
-            v, logits = net(Fpad[b])
+            rows = perm[i:i+args.batch]
+            v, logits = net(torch.from_numpy(Fnp[rows]).to(dev))
             loss = torch.tensor(0.0, device=dev)
             if not args.freeze_value:
-                loss = loss + ((v - Vt[b]) ** 2).mean()
-            if Pt is not None:
+                vt = Vt[torch.from_numpy(rows)].to(dev)
+                loss = loss + ((v - vt) ** 2).mean()
+            if pidx is not None:
+                mi, mp = policy_batch(rows)
                 logp = logits - torch.logsumexp(logits, dim=1, keepdim=True)
-                loss = loss + (-(Pt[b] * logp).sum(dim=1)).mean()
+                loss = loss + (-(mp * logp.gather(1, mi)).sum(dim=1)).mean()
             opt.zero_grad(); loss.backward(); opt.step()
             zero_pad_row(net)
             run += loss.item(); nb += 1
-        print(f"epoch {ep+1}/{args.epochs}: loss {run/nb:.4f}  ({time.time()-te:.1f}s)")
+        print(f"epoch {ep+1}/{args.epochs}: loss {run/nb:.4f}  ({time.time()-te:.1f}s)", flush=True)
     export(net, args.out)
     print(f"wrote {args.out}")
 
