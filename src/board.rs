@@ -63,6 +63,14 @@ pub struct Undo {
     pub hash: u64,
 }
 
+/// Information needed to reverse a [`Board::make_null_move`].
+#[derive(Clone, Copy, Debug)]
+pub struct NullUndo {
+    ep_square: Option<Square>,
+    halfmove_clock: u16,
+    hash: u64,
+}
+
 /// A full chess position.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Board {
@@ -438,6 +446,47 @@ impl Board {
         self.ep_square = undo.ep_square;
         self.halfmove_clock = undo.halfmove_clock;
         self.hash = undo.hash;
+    }
+
+    /// Apply a "null move": pass the turn to the opponent. Used by null-move
+    /// pruning in the search. Returns the data needed to undo it.
+    pub fn make_null_move(&mut self) -> NullUndo {
+        let undo = NullUndo {
+            ep_square: self.ep_square,
+            hash: self.hash,
+            halfmove_clock: self.halfmove_clock,
+        };
+        if let Some(ep) = self.ep_square {
+            self.hash ^= self.ep_hash_contribution(ep, self.side_to_move);
+        }
+        self.ep_square = None;
+        self.hash ^= zobrist::turn_key();
+        if self.side_to_move == Color::Black {
+            self.fullmove_number += 1;
+        }
+        self.side_to_move = self.side_to_move.flip();
+        self.halfmove_clock += 1;
+        undo
+    }
+
+    /// Reverse a [`Board::make_null_move`].
+    pub fn unmake_null_move(&mut self, undo: NullUndo) {
+        if self.side_to_move == Color::White {
+            self.fullmove_number -= 1;
+        }
+        self.side_to_move = self.side_to_move.flip();
+        self.ep_square = undo.ep_square;
+        self.hash = undo.hash;
+        self.halfmove_clock = undo.halfmove_clock;
+    }
+
+    /// Whether `color` has any non-pawn, non-king material (used to disable
+    /// null-move pruning in likely-zugzwang endgames).
+    #[inline]
+    pub fn has_non_pawn_material(&self, color: Color) -> bool {
+        let bb = self.colors[color.index()];
+        let pk = self.pieces[PieceType::Pawn.index()] | self.pieces[PieceType::King.index()];
+        (bb & !pk).any()
     }
 
     // raw (no-hash) mutators used by unmake

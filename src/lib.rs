@@ -51,6 +51,7 @@
 pub mod attacks;
 pub mod bitboard;
 pub mod board;
+pub mod eval;
 pub mod fen;
 pub mod game;
 pub mod magic;
@@ -58,17 +59,21 @@ pub mod movegen;
 pub mod moves;
 pub mod packed;
 pub mod san;
+pub mod search;
+pub mod tt;
 pub mod types;
 pub mod uci;
 pub mod zobrist;
 mod zobrist_table;
 
 pub use bitboard::Bitboard;
-pub use board::{Board, Undo};
+pub use board::{Board, NullUndo, Undo};
+pub use eval::{Evaluator, HandcraftedEval};
 pub use fen::FenError;
 pub use game::{DrawReason, Game, Outcome};
 pub use moves::{Move, MoveFlag, MoveList};
 pub use packed::Packed;
+pub use search::{Analysis, Engine, Limits, SearchInfo};
 pub use types::{
     CastlingRights, CastlingSide, Color, File, Piece, PieceType, Rank, Square, squares,
 };
