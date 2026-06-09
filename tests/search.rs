@@ -3,7 +3,7 @@
 //! perft for move generation).
 
 use chess::eval::mate_in_moves;
-use chess::{Board, Engine, Game, Limits, Move};
+use chess::{Board, Engine, Game, Limits};
 use std::fs;
 
 fn normalize_san(s: &str) -> String {
