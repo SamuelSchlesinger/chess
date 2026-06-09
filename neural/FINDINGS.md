@@ -210,6 +210,48 @@ The missing ingredient on *any* hardware is **decisiveness via exploration**
 missing ingredient *here specifically* is the **compute** to generate decisive
 games at volume. The first is a code change (next); the second is the 3080.
 
+### 5c. The corrected pipeline: q-target stops collapse, but value ≈ SF ceiling
+
+Acting on an expert-panel review we fixed two things and retried, properly this
+time: (i) a **silent tanh bug** — the trainer optimized the raw logit while Rust
+inference applied tanh, compressing the value; fixing it sharpened up-queen
++0.772→**+0.976**, down-queen −0.744→**−0.970**; (ii) the **decisiveness wall**,
+via root Dirichlet noise (decisive 7.2%→13.2%) and a **root-q value target**
+(target = blend·(β·z+(1−β)·q)+(1−blend)·anchor) so the value learns from a
+search-improved signal present on every position, not just the binary outcome.
+
+Clean three-way test (all warm-started from the sharp value `az_warm2`):
+
+```
+  tanh-fix only   az_warm2 vs az_warm        −6  [−44,+32]   (sharper, but same Elo @256)
+  policy-only RL  pol1  vs az_warm2  @256    +35  [+4,+66]   (the policy lever reproduces)
+  value-unfreeze  gen1  vs az_warm2  @256    −0   [−32,+32]
+                  gen1  vs az_warm2  @512    −6   [−36,+24]
+                  gen1  vs pol1      @256    +6   [−20,+31]  (≈ equal)
+```
+
+Two clean conclusions:
+
+1. **The q-target works as designed** — it *stopped the value collapse*. gen1's
+   up-queen value held at **+0.906** (vs the +0.308 collapse of §5b's pure-z
+   blend). The Leela q+z insight is correct and necessary.
+2. **But improving the value past SF needs scale, not just a better target.** With
+   the collapse fixed, value-unfreeze still adds **no strength over policy-only**
+   (gen1 ≈ pol1). The reason is fundamental: the value is *already at the
+   SF-distillation ceiling*, and one generation of a still-weak self-play loop
+   cannot produce value targets *better than SF* — it can only reproduce the
+   anchor. Pushing the value past the teacher requires self-play that is itself
+   strong enough to reveal SF's errors, at decisive-game volume, over many
+   generations — the chicken-and-egg that **only compute breaks**.
+
+**Net result of the whole program on the M4:** the *policy* is reliably
+improvable by self-play RL (+35–58 Elo, one-shot, then plateaus at the search
+fixed point); the *value* is pinned at the SF-distillation ceiling and moves only
+with scale. Every M4-feasible lever has been pulled and measured. The remaining
+distance to *exceeding* Stockfish is exactly the GPU-scale self-play program of
+§8 — now fully built, validated (the loop learns: §5), and de-risked (we know
+what is binding: the value ceiling, broken only by decisive self-play at volume).
+
 ## 6. The thesis: distill the value, RL the policy
 
 Neither arm alone reaches the goal:
