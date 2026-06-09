@@ -22,8 +22,10 @@ impl Bitboard {
     pub const FILE_H: Bitboard = Bitboard(0x8080_8080_8080_8080);
     pub const RANK_1: Bitboard = Bitboard(0x0000_0000_0000_00FF);
     pub const RANK_2: Bitboard = Bitboard(0x0000_0000_0000_FF00);
+    pub const RANK_3: Bitboard = Bitboard(0x0000_0000_00FF_0000);
     pub const RANK_4: Bitboard = Bitboard(0x0000_0000_FF00_0000);
     pub const RANK_5: Bitboard = Bitboard(0x0000_00FF_0000_0000);
+    pub const RANK_6: Bitboard = Bitboard(0x0000_FF00_0000_0000);
     pub const RANK_7: Bitboard = Bitboard(0x00FF_0000_0000_0000);
     pub const RANK_8: Bitboard = Bitboard(0xFF00_0000_0000_0000);
 

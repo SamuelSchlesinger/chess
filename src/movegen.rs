@@ -427,24 +427,67 @@ impl Board {
         pinned: Bitboard,
         list: &mut MoveList,
     ) {
-        let mut pawns = self.pieces_colored(PieceType::Pawn, us);
-        let (promo_rank, start_rank) = match us {
-            Color::White => (7u8, 1u8),
-            Color::Black => (0u8, 6u8),
+        let pawns = self.pieces_colored(PieceType::Pawn, us);
+        let empty = !occ;
+        let promo = match us {
+            Color::White => Bitboard::RANK_8,
+            Color::Black => Bitboard::RANK_1,
+        };
+        // Unpinned pawns move set-wise; pinned ones (rare) are handled per-pawn.
+        let free = pawns & !pinned;
+
+        // Push deltas (to − from) and capture deltas depend only on color.
+        let (up, up2, cap_a, cap_b): (i8, i8, i8, i8);
+        let (single, dbl, ca, cb): (Bitboard, Bitboard, Bitboard, Bitboard);
+        match us {
+            Color::White => {
+                up = 8;
+                up2 = 16;
+                cap_a = 7; // north-west
+                cap_b = 9; // north-east
+                single = (free << 8) & empty;
+                dbl = ((single & Bitboard::RANK_3) << 8) & empty;
+                ca = free.north_west() & them_bb;
+                cb = free.north_east() & them_bb;
+            }
+            Color::Black => {
+                up = -8;
+                up2 = -16;
+                cap_a = -9; // south-west
+                cap_b = -7; // south-east
+                single = (free >> 8) & empty;
+                dbl = ((single & Bitboard::RANK_6) >> 8) & empty;
+                ca = free.south_west() & them_bb;
+                cb = free.south_east() & them_bb;
+            }
+        }
+
+        let push_legal = single & check_mask;
+        emit_pawn_quiets(push_legal & !promo, up, list);
+        emit_pawn_promotions(push_legal & promo, up, false, list);
+        emit_pawn_doubles(dbl & check_mask, up2, list);
+
+        let ca = ca & check_mask;
+        let cb = cb & check_mask;
+        emit_pawn_captures(ca & !promo, cap_a, list);
+        emit_pawn_promotions(ca & promo, cap_a, true, list);
+        emit_pawn_captures(cb & !promo, cap_b, list);
+        emit_pawn_promotions(cb & promo, cap_b, true, list);
+
+        // Pinned pawns: restricted to the king–pinner line (rare; per-pawn).
+        let mut pinned_pawns = pawns & pinned;
+        let promo_rank = match us {
+            Color::White => 7u8,
+            Color::Black => 0u8,
+        };
+        let start_rank = match us {
+            Color::White => 1u8,
+            Color::Black => 6u8,
         };
         let fwd = us.forward();
-        let empty = !occ;
-
-        while let Some(from) = pawns.pop_lsb() {
-            let pin_mask = if pinned.has(from) {
-                attacks::line(king, from)
-            } else {
-                Bitboard::FULL
-            };
-            let mask = check_mask & pin_mask;
+        while let Some(from) = pinned_pawns.pop_lsb() {
+            let mask = check_mask & attacks::line(king, from);
             let r = from.rank().0;
-
-            // Pushes.
             let one = Square::make(from.file(), Rank((r as i8 + fwd) as u8));
             if empty.has(one) {
                 if mask.has(one) {
@@ -461,8 +504,6 @@ impl Board {
                     }
                 }
             }
-
-            // Captures and promotion-captures.
             let mut caps = attacks::pawn_attacks(us, from) & them_bb & mask;
             while let Some(to) = caps.pop_lsb() {
                 if to.rank().0 == promo_rank {
@@ -471,14 +512,17 @@ impl Board {
                     list.push(Move::capture(from, to));
                 }
             }
+        }
 
-            // En passant — validated exactly (its discovered-check case is
-            // invisible to the check mask / pin ray).
-            if let Some(ep) = self.en_passant_square()
-                && attacks::pawn_attacks(us, from).has(ep)
-                && self.ep_is_legal(from, ep, king, us, them, occ)
-            {
-                list.push(Move::en_passant(from, ep));
+        // En passant — every pawn (pinned or not) that attacks the ep square,
+        // each validated exactly (its discovered-check case is invisible to the
+        // check mask / pin ray).
+        if let Some(ep) = self.en_passant_square() {
+            let mut ep_from = pawns & attacks::pawn_attacks(them, ep);
+            while let Some(from) = ep_from.pop_lsb() {
+                if self.ep_is_legal(from, ep, king, us, them, occ) {
+                    list.push(Move::en_passant(from, ep));
+                }
             }
         }
     }
@@ -521,5 +565,43 @@ impl Board {
             return false;
         }
         true
+    }
+}
+
+// --- set-wise pawn move emitters: from = to − delta, where delta = to − from ---
+
+#[inline]
+fn pawn_origin(to: Square, delta: i8) -> Square {
+    Square((to.0 as i8 - delta) as u8)
+}
+
+#[inline]
+fn emit_pawn_quiets(mut targets: Bitboard, delta: i8, list: &mut MoveList) {
+    while let Some(to) = targets.pop_lsb() {
+        list.push(Move::quiet(pawn_origin(to, delta), to));
+    }
+}
+
+#[inline]
+fn emit_pawn_doubles(mut targets: Bitboard, delta: i8, list: &mut MoveList) {
+    while let Some(to) = targets.pop_lsb() {
+        list.push(Move::double_push(pawn_origin(to, delta), to));
+    }
+}
+
+#[inline]
+fn emit_pawn_captures(mut targets: Bitboard, delta: i8, list: &mut MoveList) {
+    while let Some(to) = targets.pop_lsb() {
+        list.push(Move::capture(pawn_origin(to, delta), to));
+    }
+}
+
+#[inline]
+fn emit_pawn_promotions(mut targets: Bitboard, delta: i8, capture: bool, list: &mut MoveList) {
+    while let Some(to) = targets.pop_lsb() {
+        let from = pawn_origin(to, delta);
+        for &pt in &PieceType::PROMOTIONS {
+            list.push(Move::promotion(from, to, pt, capture));
+        }
     }
 }
