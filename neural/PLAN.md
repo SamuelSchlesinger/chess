@@ -220,3 +220,36 @@ training, valuable even landing 100–300 Elo short. Timeline: P0–P1 ~2–4 we
 ablations); P4 ongoing. **Biggest risk: uncritical transfer** of corpus defaults
 that are keyed to a deep VRAM-bound autoregressive LM and are moot for a shallow
 quantized chess regressor — apply selectively, measure everything.
+
+---
+
+## 9. End-to-end loop closed (measured, in-repo)
+
+The entire W1 pipeline now runs with **zero external dependencies**, validating
+every link before we invest in the strong (PyTorch + Lichess + 3080) path:
+
+```
+gen-data  →  672k labeled quiet positions (PeSTO + 5000-node search labels)
+train-nnue →  768→256×2→1 net, Adam, best-val checkpoint   (val MSE 0.0132, ~20s)
+            →  nets/v2.nnue  (loaded by eval::nnue in the engine)
+play-match →  NNUE vs PeSTO at equal 5000 nodes
+```
+
+**Result:** NNUE **−120 Elo [−221, −36]** vs PeSTO at equal nodes (best-val net;
+the overfit last-epoch net was −301 — best-val checkpointing is worth ~180 Elo
+here). **Honest read:** the loop is correct and produces a real static eval, but
+it is below PeSTO because (a) 672k positions is tiny for a 197k-param net (it
+overfits by epoch 1), and (b) the labels are *our own* PeSTO+shallow-search evals,
+so the net's ceiling is ≈PeSTO, not above it.
+
+**This validates the plan's core recommendation:** to clear W1 (and head toward
+W2–W4) the net must distill **stronger-than-PeSTO labels** — the free 340M
+SF-labeled Lichess set — and use HalfKA features + QAT, trained in PyTorch on the
+3080. The in-repo loop is the de-risked harness that strong net drops into:
+`play-match --net-a <strong>.nnue` measures it the same day.
+
+**Built & validated this session:** `gen-data` (data) · `eval::nnue` (inference,
+forward-validated) · `train-nnue` (training) · `play-match` (Elo, self-validated
+at +470 for 10× nodes). **Blocked-on-you for the strong net:** install
+Stockfish + cutechess; OK to download the Lichess dataset; 3080 access window;
+PyTorch-vs-MLX framework call.
