@@ -3,3 +3,4 @@
 /nets
 /neural/.venv
 /data/*.parquet
+__pycache__/
