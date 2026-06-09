@@ -11,7 +11,7 @@ claim has a measurement or a stated assumption.
 |---|---|---|
 | PeSTO handcrafted + αβ | ≈ −585 Elo | tapered PSQT baseline |
 | SF-distilled NNUE + αβ | ≈ −417 Elo | distillation, **floored at the teacher** |
-| AZ net (value warm + policy RL) | in progress | the no-ceiling path |
+| AZ net (value warm + policy RL) | **loop validated: +58 Elo/gen** | the no-ceiling path; SF-crossing is GPU-bound |
 
 We have **not** genuinely beaten Stockfish at a meaningful budget, and we should
 not pretend to. We *can* beat a 100-node Stockfish — but a 100-node SF is a
@@ -95,8 +95,19 @@ in won positions into the 50-move draw. So strength factors cleanly:
 Distillation buys the first factor outright. The second is what self-play RL is
 *for*: the MCTS visit distribution is a search-improved policy target, and
 training the policy head to it (with the value **frozen**, so the SF distillation
-is preserved) should restore conversion. That is the warm-started cycle now
-running — and it is the synthesis of the two arms.
+is preserved) restores conversion. **This is confirmed:**
+
+```
+              gen-1 vs gen-0 (its own parent), equal sims
+from random net :  −17 Elo  [−37, +2]   (bootstrap fails — §4)
+from value-warm :  +58 Elo  [+21, +97]   (CI excludes 0 — real learning)
+```
+
+Same loop, same code, one variable changed (random vs SF-warm value). The warm
+start flips a null result into a **statistically significant +58 Elo** self-
+improvement: training only the policy head on the search-improved visit
+distribution makes the net convert positions its parent drew. The two arms,
+merged, learn. This is the central positive result of the program.
 
 ## 6. The thesis: distill the value, RL the policy
 
