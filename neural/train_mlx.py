@@ -199,6 +199,20 @@ def main():
     mx.eval(net.parameters())
     opt = optim.Adam(learning_rate=args.lr)
 
+    # The last input column (index INPUTS) is the zero-pad row used to batch
+    # variable-length feature lists. It MUST stay zero: it is gathered for every
+    # empty padding slot during training but is dropped on export, so a nonzero
+    # pad row makes the exported net compute a different function than training.
+    pad_mask = mx.concatenate(
+        [mx.ones((args.hidden, INPUTS)), mx.zeros((args.hidden, 1))], axis=1
+    )
+
+    def zero_pad():
+        net.ft.weight = net.ft.weight * pad_mask
+        mx.eval(net.ft.weight)
+
+    zero_pad()
+
     def loss_fn(net, w, b, s, t):
         out = net(w, b, s)
         pred = mx.sigmoid(out)
@@ -217,6 +231,7 @@ def main():
             loss, grads = loss_and_grad(net, w_tr[idx], b_tr[idx], s_tr[idx], t_tr[idx])
             opt.update(net, grads)
             mx.eval(net.parameters(), opt.state)
+            zero_pad()
             run += float(loss)
             nb += 1
         vloss = float(loss_fn(net, w_va, b_va, s_va, t_va))

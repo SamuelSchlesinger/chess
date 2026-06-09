@@ -14,7 +14,7 @@
 //!   cargo run --release --bin play-match -- --games 200 --nodes-a 5000 \
 //!       --nodes-b 5000 --net-a nets/v1.nnue --random-plies 8 --seed 1
 
-use chess::{Board, Engine, Game, Limits, Move, NnueEval, Outcome};
+use chess::{Board, Engine, Game, HandcraftedEval, Limits, Mcts, Move, NnueEval, Outcome};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -97,8 +97,17 @@ impl Drop for ExternalEngine {
     }
 }
 
-fn make_player(engine: Option<&str>, net: Option<&str>, nodes: u64) -> Player {
+fn make_player(engine: Option<&str>, net: Option<&str>, mcts_sims: Option<u32>, nodes: u64) -> Player {
     let limits = Limits::nodes(nodes);
+    if let Some(sims) = mcts_sims {
+        // PUCT MCTS (value-only spike) over the chosen evaluator.
+        if let Some(path) = net {
+            let mut m = Mcts::new(NnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}")));
+            return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims).0);
+        }
+        let mut m = Mcts::new(HandcraftedEval::new());
+        return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims).0);
+    }
     if let Some(path) = engine {
         let mut ext = ExternalEngine::spawn(path, nodes);
         Box::new(move |board: &Board, _hist: &[u64]| {
@@ -125,11 +134,16 @@ fn make_player(engine: Option<&str>, net: Option<&str>, nodes: u64) -> Player {
     }
 }
 
-fn label(engine: &Option<String>, net: &Option<String>) -> String {
-    engine
+fn label(engine: &Option<String>, net: &Option<String>, mcts: Option<u32>) -> String {
+    let base = engine
         .clone()
         .or_else(|| net.clone())
-        .unwrap_or_else(|| "PeSTO".to_string())
+        .unwrap_or_else(|| "PeSTO".to_string());
+    if mcts.is_some() {
+        format!("MCTS[{base}]")
+    } else {
+        base
+    }
 }
 
 /// Result of one game from side A's perspective.
@@ -214,15 +228,24 @@ fn random_opening(plies: u32, mut rng: u64) -> Vec<Move> {
 
 fn main() {
     let cfg = parse_args();
-    let label_a = label(&cfg.engine_a, &cfg.net_a);
-    let label_b = label(&cfg.engine_b, &cfg.net_b);
+    let label_a = label(&cfg.engine_a, &cfg.net_a, cfg.mcts_a);
+    let label_b = label(&cfg.engine_b, &cfg.net_b, cfg.mcts_b);
+    let budget = |mcts: Option<u32>, nodes: u64| match mcts {
+        Some(s) => format!("{s} sims"),
+        None => format!("{nodes} nodes"),
+    };
     eprintln!(
-        "play-match: {} games, A={} @ {} nodes vs B={} @ {} nodes, {} random opening plies",
-        cfg.games, label_a, cfg.nodes_a, label_b, cfg.nodes_b, cfg.random_plies,
+        "play-match: {} games, A={} @ {} vs B={} @ {}, {} random opening plies",
+        cfg.games,
+        label_a,
+        budget(cfg.mcts_a, cfg.nodes_a),
+        label_b,
+        budget(cfg.mcts_b, cfg.nodes_b),
+        cfg.random_plies,
     );
 
-    let mut a = make_player(cfg.engine_a.as_deref(), cfg.net_a.as_deref(), cfg.nodes_a);
-    let mut b = make_player(cfg.engine_b.as_deref(), cfg.net_b.as_deref(), cfg.nodes_b);
+    let mut a = make_player(cfg.engine_a.as_deref(), cfg.net_a.as_deref(), cfg.mcts_a, cfg.nodes_a);
+    let mut b = make_player(cfg.engine_b.as_deref(), cfg.net_b.as_deref(), cfg.mcts_b, cfg.nodes_b);
 
     let (mut w, mut d, mut l) = (0u32, 0u32, 0u32);
     let start = std::time::Instant::now();
@@ -304,6 +327,8 @@ struct Config {
     net_b: Option<String>,
     engine_a: Option<String>,
     engine_b: Option<String>,
+    mcts_a: Option<u32>,
+    mcts_b: Option<u32>,
     random_plies: u32,
     seed: u64,
 }
@@ -317,6 +342,8 @@ fn parse_args() -> Config {
         net_b: None,
         engine_a: None,
         engine_b: None,
+        mcts_a: None,
+        mcts_b: None,
         random_plies: 8,
         seed: 1,
     };
@@ -332,6 +359,8 @@ fn parse_args() -> Config {
             "--net-b" => cfg.net_b = Some(v.clone()),
             "--engine-a" => cfg.engine_a = Some(v.clone()),
             "--engine-b" => cfg.engine_b = Some(v.clone()),
+            "--mcts-a" => cfg.mcts_a = v.parse().ok(),
+            "--mcts-b" => cfg.mcts_b = v.parse().ok(),
             "--random-plies" => cfg.random_plies = v.parse().unwrap_or(cfg.random_plies),
             "--seed" => cfg.seed = v.parse().unwrap_or(cfg.seed),
             _ => {
