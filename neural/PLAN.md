@@ -253,3 +253,27 @@ forward-validated) · `train-nnue` (training) · `play-match` (Elo, self-validat
 at +470 for 10× nodes). **Blocked-on-you for the strong net:** install
 Stockfish + cutechess; OK to download the Lichess dataset; 3080 access window;
 PyTorch-vs-MLX framework call.
+
+---
+
+## 10. Stockfish-distilled net — measured progress (the thesis confirmed)
+
+Same 768 net, 672k self-play positions, only the **labels** changed (our PeSTO+5k
+search → **Stockfish @ 8000 nodes** via `label-sf`):
+
+| Matchup @ equal 5000 nodes | PeSTO-labeled | SF-labeled |
+|---|---|---|
+| NNUE vs our PeSTO engine | **−120 Elo** | **+57 Elo** [−15, +134] |
+| engine vs Stockfish 18 | −585 (PeSTO) | **−417** [.. −267] |
+
+Distilling SF labels into the *same architecture* flipped the net from losing to
+PeSTO to **beating** it, and closed **~168 Elo** of the gap to full SF. Val MSE
+0.0132 → 0.0099. This is the empirical confirmation of the central thesis: **eval
+label quality is the dominant lever**, ahead of architecture — and it transfers
+straight through our existing inference + measurement harness.
+
+Status vs the gates: this is *directional* W1 (beats PeSTO) but not yet the clean
+**>100 Elo, tight-CI** W1 — that needs more data and games. Both are the next
+step: scale to the Lichess 50–200M SF-labeled set via the MLX GPU trainer, widen
+HIDDEN 256→512 + SCReLU, and run 200+ game matches. Then attack the W2 ladder
+(beat SF@1320 → 1500 → 2000 via UCI_LimitStrength).
