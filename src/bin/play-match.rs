@@ -15,31 +15,121 @@
 //!       --nodes-b 5000 --net-a nets/v1.nnue --random-plies 8 --seed 1
 
 use chess::{Board, Engine, Game, Limits, Move, NnueEval, Outcome};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 const MAX_PLIES: u32 = 320;
 
 type Player = Box<dyn FnMut(&Board, &[u64]) -> Move>;
 
-fn make_player(net: Option<&str>, nodes: u64) -> Player {
-    let limits = Limits::nodes(nodes);
-    match net {
-        Some(path) => {
-            let eval = NnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}"));
-            let mut engine = Engine::with_eval_and_tt(eval, 16);
-            Box::new(move |board: &Board, hist: &[u64]| {
-                engine.set_history(hist);
-                engine.analyze(board, &limits).best_move
-            })
-        }
-        None => {
-            let mut engine = Engine::new();
-            engine.resize_tt(16);
-            Box::new(move |board: &Board, hist: &[u64]| {
-                engine.set_history(hist);
-                engine.analyze(board, &limits).best_move
-            })
+/// An external UCI engine (e.g. Stockfish) driven at a fixed node budget.
+struct ExternalEngine {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    nodes: u64,
+}
+
+impl ExternalEngine {
+    fn spawn(path: &str, nodes: u64) -> ExternalEngine {
+        let mut child = Command::new(path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap_or_else(|e| panic!("spawn {path}: {e}"));
+        let stdin = child.stdin.take().unwrap();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut e = ExternalEngine {
+            child,
+            stdin,
+            stdout,
+            nodes,
+        };
+        e.send("uci");
+        e.wait_for("uciok");
+        e.send("setoption name Threads value 1");
+        e.send("setoption name Hash value 16");
+        e.send("isready");
+        e.wait_for("readyok");
+        e
+    }
+
+    fn send(&mut self, cmd: &str) {
+        writeln!(self.stdin, "{cmd}").unwrap();
+        self.stdin.flush().unwrap();
+    }
+
+    fn wait_for(&mut self, token: &str) {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            if self.stdout.read_line(&mut line).unwrap_or(0) == 0 {
+                return;
+            }
+            if line.trim_start().starts_with(token) {
+                return;
+            }
         }
     }
+
+    /// Ask for the best move in `fen` at the fixed node budget (UCI long form).
+    fn best_move(&mut self, fen: &str) -> Option<String> {
+        self.send(&format!("position fen {fen}"));
+        self.send(&format!("go nodes {}", self.nodes));
+        let mut line = String::new();
+        loop {
+            line.clear();
+            if self.stdout.read_line(&mut line).unwrap_or(0) == 0 {
+                return None;
+            }
+            if let Some(rest) = line.trim_start().strip_prefix("bestmove ") {
+                return rest.split_whitespace().next().map(|s| s.to_string());
+            }
+        }
+    }
+}
+
+impl Drop for ExternalEngine {
+    fn drop(&mut self) {
+        let _ = writeln!(self.stdin, "quit");
+        let _ = self.child.wait();
+    }
+}
+
+fn make_player(engine: Option<&str>, net: Option<&str>, nodes: u64) -> Player {
+    let limits = Limits::nodes(nodes);
+    if let Some(path) = engine {
+        let mut ext = ExternalEngine::spawn(path, nodes);
+        Box::new(move |board: &Board, _hist: &[u64]| {
+            let fen = board.to_fen();
+            match ext.best_move(&fen) {
+                Some(mv) => board.parse_uci(&mv).unwrap_or(Move::NONE),
+                None => Move::NONE,
+            }
+        })
+    } else if let Some(path) = net {
+        let eval = NnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}"));
+        let mut engine = Engine::with_eval_and_tt(eval, 16);
+        Box::new(move |board: &Board, hist: &[u64]| {
+            engine.set_history(hist);
+            engine.analyze(board, &limits).best_move
+        })
+    } else {
+        let mut engine = Engine::new();
+        engine.resize_tt(16);
+        Box::new(move |board: &Board, hist: &[u64]| {
+            engine.set_history(hist);
+            engine.analyze(board, &limits).best_move
+        })
+    }
+}
+
+fn label(engine: &Option<String>, net: &Option<String>) -> String {
+    engine
+        .clone()
+        .or_else(|| net.clone())
+        .unwrap_or_else(|| "PeSTO".to_string())
 }
 
 /// Result of one game from side A's perspective.
@@ -124,18 +214,15 @@ fn random_opening(plies: u32, mut rng: u64) -> Vec<Move> {
 
 fn main() {
     let cfg = parse_args();
+    let label_a = label(&cfg.engine_a, &cfg.net_a);
+    let label_b = label(&cfg.engine_b, &cfg.net_b);
     eprintln!(
         "play-match: {} games, A={} @ {} nodes vs B={} @ {} nodes, {} random opening plies",
-        cfg.games,
-        cfg.net_a.as_deref().unwrap_or("PeSTO"),
-        cfg.nodes_a,
-        cfg.net_b.as_deref().unwrap_or("PeSTO"),
-        cfg.nodes_b,
-        cfg.random_plies,
+        cfg.games, label_a, cfg.nodes_a, label_b, cfg.nodes_b, cfg.random_plies,
     );
 
-    let mut a = make_player(cfg.net_a.as_deref(), cfg.nodes_a);
-    let mut b = make_player(cfg.net_b.as_deref(), cfg.nodes_b);
+    let mut a = make_player(cfg.engine_a.as_deref(), cfg.net_a.as_deref(), cfg.nodes_a);
+    let mut b = make_player(cfg.engine_b.as_deref(), cfg.net_b.as_deref(), cfg.nodes_b);
 
     let (mut w, mut d, mut l) = (0u32, 0u32, 0u32);
     let start = std::time::Instant::now();
@@ -162,8 +249,8 @@ fn main() {
     let secs = start.elapsed().as_secs_f64();
     println!(
         "\nA (={}) vs B (={}): +{w} ={d} -{l}  over {} games in {:.1}s",
-        cfg.net_a.as_deref().unwrap_or("PeSTO"),
-        cfg.net_b.as_deref().unwrap_or("PeSTO"),
+        label_a,
+        label_b,
         w + d + l,
         secs
     );
@@ -215,6 +302,8 @@ struct Config {
     nodes_b: u64,
     net_a: Option<String>,
     net_b: Option<String>,
+    engine_a: Option<String>,
+    engine_b: Option<String>,
     random_plies: u32,
     seed: u64,
 }
@@ -226,6 +315,8 @@ fn parse_args() -> Config {
         nodes_b: 5000,
         net_a: None,
         net_b: None,
+        engine_a: None,
+        engine_b: None,
         random_plies: 8,
         seed: 1,
     };
@@ -239,6 +330,8 @@ fn parse_args() -> Config {
             "--nodes-b" => cfg.nodes_b = v.parse().unwrap_or(cfg.nodes_b),
             "--net-a" => cfg.net_a = Some(v.clone()),
             "--net-b" => cfg.net_b = Some(v.clone()),
+            "--engine-a" => cfg.engine_a = Some(v.clone()),
+            "--engine-b" => cfg.engine_b = Some(v.clone()),
             "--random-plies" => cfg.random_plies = v.parse().unwrap_or(cfg.random_plies),
             "--seed" => cfg.seed = v.parse().unwrap_or(cfg.seed),
             _ => {
