@@ -82,6 +82,35 @@ class Net(nn.Module):
         return self.v(h)[:, 0], self.p(h)
 
 
+def load_azn(net, path):
+    """Import .azn weights into the Net (reverse of export) for warm-starting."""
+    d = open(path, "rb").read()
+    magic, _v, ft, hid = struct.unpack("<IIII", d[:16])
+    assert magic == MAGIC and ft == FT and hid == HID, "azn header mismatch"
+    o = 16
+    def take(n):
+        nonlocal o
+        a = np.frombuffer(d[o : o + n * 4], dtype="<f4").astype(np.float32)
+        o += n * 4
+        return a
+    ftw = take(INPUTS * FT).reshape(INPUTS, FT).T            # -> [FT, INPUTS]
+    ftb = take(FT)
+    hw = take(FT * HID).reshape(HID, FT)
+    hb = take(HID)
+    vw = take(HID).reshape(1, HID)
+    vb = take(1)
+    pw = take(HID * POLICY).reshape(POLICY, HID)
+    pb = take(POLICY)
+    w = np.zeros((FT, INPUTS + 1), dtype=np.float32)
+    w[:, :INPUTS] = ftw
+    net.ft.weight = mx.array(w)
+    net.ft.bias = mx.array(ftb)
+    net.h.weight = mx.array(hw); net.h.bias = mx.array(hb)
+    net.v.weight = mx.array(vw); net.v.bias = mx.array(vb)
+    net.p.weight = mx.array(pw); net.p.bias = mx.array(pb)
+    mx.eval(net.parameters())
+
+
 def export(net, path):
     def a(x):
         return np.array(x)
@@ -111,6 +140,8 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--max-rows", type=int, default=4_000_000)
     ap.add_argument("--warm", default=None, help="warm-start .azn to continue from")
+    ap.add_argument("--freeze-value", action="store_true",
+                    help="train only the policy head (preserve the warm value)")
     args = ap.parse_args()
 
     t0 = time.time()
@@ -129,13 +160,22 @@ def main():
     mx.eval(net.parameters())
     pad = mx.concatenate([mx.ones((FT, INPUTS)), mx.zeros((FT, 1))], axis=1)
     net.ft.weight = net.ft.weight * pad
+    if args.warm:
+        load_azn(net, args.warm)
+        print(f"warm-started from {args.warm}")
+    if args.freeze_value:
+        # Keep the SF-distilled value + trunk; shape only the policy from search.
+        net.ft.freeze(); net.h.freeze(); net.v.freeze()
+        print("value+trunk frozen; training policy head only")
     opt = optim.Adam(learning_rate=args.lr)
 
     def loss_fn(net, idx, target_pol, z):
         v, logits = net(idx)
-        vloss = mx.mean((v - z) ** 2)
         logp = logits - mx.logsumexp(logits, axis=1, keepdims=True)
         ploss = mx.mean(-mx.sum(target_pol * logp, axis=1))
+        if args.freeze_value:
+            return ploss
+        vloss = mx.mean((v - z) ** 2)
         return vloss + ploss
 
     lg = nn.value_and_grad(net, loss_fn)
