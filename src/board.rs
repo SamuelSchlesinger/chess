@@ -480,9 +480,18 @@ impl Board {
         h
     }
 
-    /// Set the stored hash to the freshly recomputed value.
-    pub(crate) fn refresh_hash(&mut self) {
-        self.hash = self.recompute_hash();
+    /// Fold the non-piece keys (castling, en passant, side) into a hash that
+    /// already holds the piece component. Used by FEN/packed loaders, which
+    /// accumulate the piece keys incrementally via [`Board::set_square`] and so
+    /// avoid the second 64-square pass that [`Board::recompute_hash`] would do.
+    pub(crate) fn finalize_hash(&mut self) {
+        self.hash ^= zobrist::castling_key(self.castling);
+        if let Some(ep) = self.ep_square {
+            self.hash ^= self.ep_hash_contribution(ep, self.side_to_move);
+        }
+        if self.side_to_move == Color::White {
+            self.hash ^= zobrist::turn_key();
+        }
     }
 
     /// Does `color` have the right and geometry to castle on `side`?

@@ -125,7 +125,7 @@ impl Board {
             }
         }
 
-        board.refresh_hash();
+        board.finalize_hash();
         Ok(board)
     }
 

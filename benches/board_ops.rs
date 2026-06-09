@@ -145,6 +145,38 @@ fn bench_hash(c: &mut Criterion) {
         .bench_function("recompute", |b| b.iter(|| black_box(&board).recompute_hash()));
 }
 
+fn bench_batch(c: &mut Criterion) {
+    // The "process many compact boards at once" path: a dense Vec<Packed>
+    // (34 B each) streamed through unpack + work. Reports positions/sec.
+    use chess::Packed;
+    let fens = [START, KIWIPETE, MIDGAME, "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1"];
+    let packed: Vec<Packed> = (0..4096)
+        .map(|i| Board::from_fen(fens[i % fens.len()]).unwrap().pack())
+        .collect();
+
+    let mut group = c.benchmark_group("batch");
+    group.throughput(Throughput::Elements(packed.len() as u64));
+    group.bench_function("unpack", |b| {
+        b.iter(|| {
+            let mut acc = 0u64;
+            for p in black_box(&packed) {
+                acc ^= p.unpack().hash();
+            }
+            black_box(acc)
+        });
+    });
+    group.bench_function("unpack+legal_count", |b| {
+        b.iter(|| {
+            let mut acc = 0usize;
+            for p in black_box(&packed) {
+                acc += p.unpack().legal_moves().len();
+            }
+            black_box(acc)
+        });
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_perft,
@@ -152,6 +184,7 @@ criterion_group!(
     bench_make_unmake,
     bench_attacks,
     bench_pack,
-    bench_hash
+    bench_hash,
+    bench_batch
 );
 criterion_main!(benches);

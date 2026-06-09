@@ -117,7 +117,7 @@ impl Packed {
             self.halfmove_clock(),
             1,
         );
-        board.refresh_hash();
+        board.finalize_hash();
         board
     }
 }
