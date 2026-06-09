@@ -25,8 +25,13 @@ case "${1:-status}" in
       echo "already running (tmux: $SESSION). use 'status' or 'watch'."; exit 0
     fi
     echo "[$(date +%H:%M:%S)] launching program in tmux '$SESSION' (survives Claude restarts)" | tee -a "$LOG"
+    # Forward batch-eval vars only when set here (a pre-existing tmux server
+    # would not inherit our env); unset vars let the program's persisted
+    # logs/program_state/config keep the original mode on resume. The program's
+    # own EXIT trap logs "EXITED rc=".
     tmux new-session -d -s "$SESSION" \
-      "exec neural/run_gpu_program.sh $* >> $LOG 2>&1; echo EXITED >> $LOG"
+      "exec env ${BATCH_EVAL+BATCH_EVAL=$BATCH_EVAL} ${SP_THREADS+SP_THREADS=$SP_THREADS} ${BATCH_LEAVES+BATCH_LEAVES=$BATCH_LEAVES} \
+        neural/run_gpu_program.sh $* >> $LOG 2>&1"
     sleep 1
     echo "started. tail: neural/launch_program.sh status   | live: neural/launch_program.sh watch"
     ;;

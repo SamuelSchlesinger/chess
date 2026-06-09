@@ -38,12 +38,18 @@ train (q-target, anchor-lag-1) → 200-game Elo gate (keep only ≥ +5 Elo vs be
   the gate (no real gain) — this is expected (FINDINGS §5c). It demonstrates the
   harness and yields the strongest M4-reachable net; it will **not** beat SF.
 - **On the RTX 3080:** the throughput to run decisive self-play at volume over
-  20–50 generations is the actual route past SF. Same command, bigger params:
+  20–50 generations is the actual route past SF. Same command, bigger params,
+  plus the (built, verified) GPU-batched leaf evaluation:
   ```bash
-  uv pip install --python neural/.venv/bin/python torch   # CUDA build
-  neural/launch_program.sh start 30 20000 800
+  uv pip install --python neural/.venv/bin/python torch numpy   # CUDA build
+  tmux new-session -d -s chesstrain \
+    "BATCH_EVAL=1 SP_THREADS=256 neural/run_gpu_program.sh 30 20000 800 >> logs/program.log 2>&1"
+  # or equivalently: BATCH_EVAL=1 SP_THREADS=256 neural/launch_program.sh start 30 20000 800
   ```
-  For the full speedup, also build GPU-batched-eval self-play (neural/GPU_PLAN.md).
+  BATCH_EVAL=1 runs self-play leaf evals through neural/eval_server.py on the
+  GPU (virtual-loss K-leaf batching x games-in-flight; see GPU_PLAN.md for the
+  measured/projected throughput). Keep BATCH_EVAL=0 on the M4 — its CPU path
+  is faster than MPS at these batch sizes.
 
 ## The strongest standalone net right now
 

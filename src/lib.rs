@@ -72,7 +72,7 @@ pub use board::{Board, NullUndo, Undo};
 pub use eval::{Evaluator, HandcraftedEval, Nnue, NnueEval, PolicyValueNet};
 pub use fen::FenError;
 pub use game::{DrawReason, Game, Outcome};
-pub use mcts::Mcts;
+pub use mcts::{Guide, Mcts, RemoteGuide};
 pub use moves::{Move, MoveFlag, MoveList};
 pub use packed::Packed;
 pub use search::{Analysis, Engine, Limits, SearchInfo};

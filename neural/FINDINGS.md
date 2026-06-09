@@ -12,6 +12,7 @@ claim has a measurement or a stated assumption.
 | PeSTO handcrafted + αβ | ≈ −585 Elo | tapered PSQT baseline |
 | SF-distilled NNUE + αβ | ≈ −417 Elo | distillation, **floored at the teacher** |
 | AZ net (value warm + policy RL) | **loop validated: +58 Elo/gen** | the no-ceiling path; SF-crossing is GPU-bound |
+| AZ net + MCTS, direct match | **0/40 vs SF @ equal 800 nodes** (2026-06-09, gpu_gen1) | gap > ~640 Elo at that budget today — the loop must run at 3080 scale to move this |
 
 We have **not** genuinely beaten Stockfish at a meaningful budget, and we should
 not pretend to. We *can* beat a 100-node Stockfish — but a 100-node SF is a
@@ -312,7 +313,12 @@ cannot run enough generations to pass SF; self-play game generation is the wall
 (CPU-bound MCTS at ~10 games/s/cycle).
 
 On the **RTX 3080** (when free), the finish:
-- Batched GPU inference for self-play (1–2 orders of magnitude more games/s).
+- Batched GPU inference for self-play — **built and verified** (2026-06-09):
+  virtual-loss K-leaf batching in MCTS + a framed Unix-socket protocol to a torch
+  eval server (`neural/eval_server.py`); remote ≡ local on diagnostic probes,
+  ~51k evals/s measured on M4/MPS, honest 3080 projection 200–500k evals/s
+  (≈3–7 games/s @800 sims → 20k-game generations in ~1–2 h). `BATCH_EVAL=1`
+  in `neural/run_gpu_program.sh`. Details + corrected throughput math: GPU_PLAN.md.
 - Warm-start value from SF; then ~20–50 RL generations, each: ~50–200k self-play
   games at 400–800 sims, train value(outcome)+policy(visits), gate new gen by an
   Elo match (keep only if ≥ +10 Elo vs current best, à la AlphaZero's 55% gate).

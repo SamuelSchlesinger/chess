@@ -14,7 +14,7 @@
 //! `root_q` is the MCTS root value (side-to-move) × 10000 — a search-improved
 //! value target that is informative even on drawn games (FINDINGS §5b).
 
-use chess::{Game, Mcts, Outcome, PolicyValueNet};
+use chess::{Game, Guide, Mcts, Outcome, PolicyValueNet, RemoteGuide};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -33,6 +33,11 @@ struct Cfg {
     threads: usize,
     seed: u64,
     save_net: Option<String>,
+    /// Unix socket of a batched eval server (neural/eval_server.py); when set,
+    /// leaf evals go to the GPU and `--threads` means concurrent games.
+    eval_server: Option<String>,
+    /// Leaves per virtual-loss batch round (0 = auto: 16 remote, 1 local).
+    batch_leaves: usize,
 }
 
 fn main() {
@@ -48,12 +53,21 @@ fn main() {
         net.save(p).expect("save net");
         eprintln!("saved generation net to {p}");
     }
+    let leaves = if cfg.batch_leaves > 0 {
+        cfg.batch_leaves
+    } else if cfg.eval_server.is_some() {
+        16
+    } else {
+        1
+    };
     eprintln!(
-        "selfplay: {} games, {} sims/move, net={}, {} threads",
+        "selfplay: {} games, {} sims/move, net={}, {} threads, eval={}, {} leaves/batch",
         cfg.games,
         cfg.sims,
         cfg.net.as_deref().unwrap_or("random"),
-        cfg.threads
+        cfg.threads,
+        cfg.eval_server.as_deref().unwrap_or("local"),
+        leaves
     );
     if let Some(d) = std::path::Path::new(&cfg.out).parent() {
         let _ = std::fs::create_dir_all(d);
@@ -68,33 +82,13 @@ fn main() {
     for t in 0..cfg.threads {
         let (cfg, net, next, positions, done) =
             (cfg.clone(), net.clone(), next.clone(), positions.clone(), done.clone());
-        handles.push(std::thread::spawn(move || {
-            use std::io::Write;
-            let mut mcts = Mcts::new(net);
-            let mut out = std::io::BufWriter::new(
-                std::fs::File::create(format!("{}.part{}", cfg.out, t)).unwrap(),
-            );
-            let mut buf = Vec::new();
-            loop {
-                let g = next.fetch_add(1, Ordering::Relaxed);
-                if g >= cfg.games {
-                    break;
-                }
-                let n = play(&mut mcts, splitmix(cfg.seed, g), cfg.sims, &mut buf);
-                out.write_all(&buf).unwrap();
-                buf.clear();
-                positions.fetch_add(n as u64, Ordering::Relaxed);
-                let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-                if t == 0 && d.is_multiple_of(50) {
-                    let s = start.elapsed().as_secs_f64();
-                    eprintln!(
-                        "  {d} games, {} positions, {:.1} games/s",
-                        positions.load(Ordering::Relaxed),
-                        d as f64 / s
-                    );
-                }
+        handles.push(std::thread::spawn(move || match &cfg.eval_server {
+            Some(sock) => {
+                let guide = RemoteGuide::connect(sock)
+                    .unwrap_or_else(|e| panic!("connect eval server {sock}: {e}"));
+                worker(Mcts::new(guide), t, leaves, &cfg, &next, &positions, &done, start);
             }
-            out.flush().unwrap();
+            None => worker(Mcts::new(net), t, leaves, &cfg, &next, &positions, &done, start),
         }));
     }
     for h in handles {
@@ -108,10 +102,49 @@ fn main() {
     );
 }
 
+/// One self-play worker: pulls game indices until exhausted, writes one shard.
+#[allow(clippy::too_many_arguments)]
+fn worker<G: Guide>(
+    mut mcts: Mcts<G>,
+    t: usize,
+    leaves: usize,
+    cfg: &Cfg,
+    next: &AtomicU64,
+    positions: &AtomicU64,
+    done: &AtomicU64,
+    start: std::time::Instant,
+) {
+    use std::io::Write;
+    let mut out = std::io::BufWriter::new(
+        std::fs::File::create(format!("{}.part{}", cfg.out, t)).unwrap(),
+    );
+    let mut buf = Vec::new();
+    loop {
+        let g = next.fetch_add(1, Ordering::Relaxed);
+        if g >= cfg.games {
+            break;
+        }
+        let n = play(&mut mcts, splitmix(cfg.seed, g), cfg.sims, leaves, &mut buf);
+        out.write_all(&buf).unwrap();
+        buf.clear();
+        positions.fetch_add(n as u64, Ordering::Relaxed);
+        let d = done.fetch_add(1, Ordering::Relaxed) + 1;
+        if t == 0 && d.is_multiple_of(50) {
+            let s = start.elapsed().as_secs_f64();
+            eprintln!(
+                "  {d} games, {} positions, {:.1} games/s",
+                positions.load(Ordering::Relaxed),
+                d as f64 / s
+            );
+        }
+    }
+    out.flush().unwrap();
+}
+
 /// (packed position bytes, root_q×10000, MCTS visit policy as (move_index, visits)).
 type Recorded = ([u8; 34], i16, Vec<(u16, u16)>);
 
-fn play(mcts: &mut Mcts<Arc<PolicyValueNet>>, mut rng: u64, sims: u32, out: &mut Vec<u8>) -> usize {
+fn play<G: Guide>(mcts: &mut Mcts<G>, mut rng: u64, sims: u32, leaves: usize, out: &mut Vec<u8>) -> usize {
     let mut game = Game::new();
     let mut recorded: Vec<Recorded> = Vec::new();
     let mut result: i8 = 0;
@@ -137,18 +170,24 @@ fn play(mcts: &mut Mcts<Arc<PolicyValueNet>>, mut rng: u64, sims: u32, out: &mut
         rng ^= rng << 13;
         rng ^= rng >> 7;
         rng ^= rng << 17;
-        let (_best, dist) = mcts.search_noisy(&board, sims, DIR_ALPHA, DIR_EPS, rng);
+        let (_best, dist) = mcts.search_noisy_batched(&board, sims, DIR_ALPHA, DIR_EPS, rng, leaves);
         let total: u32 = dist.iter().map(|&(_, n)| n).sum();
         if total == 0 {
             break;
         }
         let qi = (mcts.last_root_value().clamp(-1.0, 1.0) * 10000.0) as i16;
 
-        // Record the position + root value + visit policy.
-        let policy: Vec<(u16, u16)> = dist
-            .iter()
-            .map(|&(mv, n)| (chess::eval::policyvalue::move_index(mv) as u16, n as u16))
-            .collect();
+        // Record the position + root value + visit policy. Promotions of the
+        // same from/to share a move_index, so aggregate visits per index —
+        // otherwise the trainer's one-hot scatter drops the duplicates' mass.
+        let mut policy: Vec<(u16, u16)> = Vec::with_capacity(dist.len());
+        for &(mv, n) in &dist {
+            let mi = chess::eval::policyvalue::move_index(mv) as u16;
+            match policy.iter_mut().find(|(m, _)| *m == mi) {
+                Some((_, v)) => *v = v.saturating_add(n as u16),
+                None => policy.push((mi, n as u16)),
+            }
+        }
         recorded.push((board.pack().bytes, qi, policy));
 
         let stm_white = board.side_to_move() == chess::Color::White;
@@ -227,6 +266,8 @@ fn parse() -> Cfg {
         threads: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
         seed: 1,
         save_net: None,
+        eval_server: None,
+        batch_leaves: 0,
     };
     let a: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -240,6 +281,8 @@ fn parse() -> Cfg {
             "--threads" => c.threads = v.parse().unwrap_or(c.threads),
             "--seed" => c.seed = v.parse().unwrap_or(c.seed),
             "--save-net" => c.save_net = Some(v.clone()),
+            "--eval-server" => c.eval_server = Some(v.clone()),
+            "--batch-leaves" => c.batch_leaves = v.parse().unwrap_or(c.batch_leaves),
             _ => {
                 i += 1;
                 continue;

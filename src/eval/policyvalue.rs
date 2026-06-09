@@ -61,6 +61,22 @@ fn stm_feature(stm: Color, color: Color, pt: PieceType, sq: usize) -> usize {
     (rel_color * 6 + pt.index()) * 64 + rel_sq
 }
 
+/// All active side-to-move-relative feature indices for `board` (≤ 32).
+/// Used by remote/batched evaluation so the server does no chess logic.
+pub fn stm_feature_indices(board: &Board) -> Vec<u16> {
+    let stm = board.side_to_move();
+    let mut feats = Vec::with_capacity(32);
+    for pt in PieceType::ALL {
+        for color in Color::ALL {
+            let mut bb = board.pieces_colored(pt, color);
+            while let Some(sq) = bb.pop_lsb() {
+                feats.push(stm_feature(stm, color, pt, sq.index()) as u16);
+            }
+        }
+    }
+    feats
+}
+
 impl PolicyValueNet {
     pub fn from_bytes(bytes: &[u8]) -> Result<PolicyValueNet, String> {
         let mut r = Reader { bytes, pos: 0 };

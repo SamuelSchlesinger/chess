@@ -54,6 +54,8 @@ def load_selfplay(prefix, max_rows):
             res = struct.unpack("b", d[o:o+1])[0]; o += 1
             rq = struct.unpack("<h", d[o:o+2])[0] / 10000.0; o += 2
             n = d[o]; o += 1
+            if o + 4 * n > len(d):
+                break  # truncated tail (e.g. unflushed shard from a killed run)
             mv = []; tot = 0
             for _ in range(n):
                 mi = d[o] | (d[o+1] << 8); vis = d[o+2] | (d[o+3] << 8); o += 4
@@ -224,7 +226,9 @@ def main():
     if pidx is not None:
         Pt = torch.zeros((n, POLICY), dtype=torch.float32)
         for i in range(n):
-            Pt[i, pidx[i]] = torch.tensor(pp[i])
+            # accumulate=True: promotions share a move_index in older records
+            Pt[i].index_put_((torch.from_numpy(pidx[i]),), torch.from_numpy(pp[i]),
+                             accumulate=True)
         Pt = Pt.to(dev)
 
     opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad],

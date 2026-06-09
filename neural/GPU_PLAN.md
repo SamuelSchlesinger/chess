@@ -31,32 +31,43 @@ Elo gate] × NGEN, keeping only generations that gain ≥ +5 Elo.
 | Elo gate | ≥ +5 vs current, 200 games | §3: MSE can fall while Elo regresses — gate on play, not loss |
 | tanh in trainer | yes | §5c bug: must match Rust inference or the value is silently compressed |
 
-## The one remaining build: GPU-batched self-play (the real throughput win)
+## GPU-batched self-play — BUILT and verified (the real throughput win)
 
-Today self-play is Rust/CPU (~10 games/s here). The 3080's value is **batched leaf
-evaluation**: collect MCTS leaves across many concurrent games into one big batch
-and evaluate on the GPU. Two implementation options, in priority order:
+The batched-eval machinery is implemented and verified end to end on the M4:
 
-1. **Python self-play driver** (fastest to build): port the PUCT loop to Python,
-   keep `~`512–1024 games in flight, batch all pending leaf evals through the
-   CUDA net each step. Reuses the Rust move-gen via a thin PyO3 binding or via the
-   existing `gen-data`-style packed boards. Expected: 1–2 orders more evals/s than
-   CPU. ~1–2 days.
-2. **Rust + on-GPU net** (fastest to run): add a batched-eval server (the net in
-   `tch`/ONNX-Runtime/candle) that the Rust self-play threads submit leaves to.
-   More work, best steady-state throughput.
+- **Rust** (`src/mcts.rs`): `search_noisy_batched` collects up to K leaves per
+  round under **virtual loss** and evaluates them through `Guide::evaluate_batch`;
+  `RemoteGuide` pipelines the K leaves as one *frame* over a Unix socket. The
+  classic single-leaf path is untouched (K=1 is bit-for-bit the validated search).
+- **Python** (`neural/eval_server.py`): torch server (CUDA/MPS/CPU) that batches
+  frames across all connections into one GPU forward; softmax over the legal-move
+  indices on-GPU; frame-level decode/reply so Python per-leaf overhead is small.
+  The Rust side ships precomputed stm-relative feature indices — the server does
+  zero chess logic.
+- **Correctness**: `probe-az --eval-server <sock>` prints values/priors identical
+  to the local Rust evaluation on the diagnostic FENs (server on CPU). MCTS unit
+  tests cover the batched search (mate-in-one, exact visit budgets, legality).
+- **Wired in**: `BATCH_EVAL=1 [SP_THREADS=256] [BATCH_LEAVES=16]
+  neural/run_gpu_program.sh ...` starts/stops the server per generation, serving
+  the current best net. Default (BATCH_EVAL=0) is the unchanged CPU path.
 
-Until then `run_gpu_program.sh` runs CPU self-play + GPU training — correct, just
-self-play-bound. It is the right thing to launch first to confirm the loop gains
-on the 3080 before investing in (1)/(2).
+## Resource math (measured, then projected)
 
-## Resource math (order-of-magnitude)
-
-- **Self-play (the bottleneck).** AlphaZero-chess: ~800 sims/move, ~80 moves/game.
-  CPU here: ~10 games/s on 14 cores. A 3080 box (say 16 cores) ≈ similar on CPU;
-  with GPU-batched eval (the build above): **~300–1000 games/s**.
-- **Per generation.** 20k–50k games. GPU-batched: minutes–tens of minutes; CPU-only:
-  hours. **This is why the batched-eval build matters.**
+- **Measured on the M4** (96 games in flight, K=16, MPS, batch ~270): **~51k
+  evals/s** server-side ≈ 0.8 games/s @400 sims. The M4's *local CPU* path does
+  ~90k evals/s (≈2.8 games/s @400 sims, 6 threads) — so on the M4 keep
+  BATCH_EVAL=0; MPS forward latency dominates at these batch sizes. The build's
+  value is the 3080, where the forward is ~5-10x faster and batches are bigger
+  (more games in flight on a 16-core box).
+- **3080 projection (honest)**: 200–500k evals/s server-capped. At 800 sims and
+  ~90 plies/game ≈ 72k evals/game → **~3–7 games/s** → 20k games in **0.8–1.9 h
+  per generation**; 30 generations ≈ 1–2.5 days wall-clock. (An earlier draft of
+  this plan said "300–1000 games/s" — that was wrong by an order of magnitude:
+  each game's evals are *sequential*, so throughput = in-flight games / round-trip
+  time, not raw GPU FLOPs. Virtual-loss K-leaf pipelining is what closes the gap.)
+- **If self-play still binds on the 3080**: raise SP_THREADS (games in flight)
+  and BATCH_LEAVES; the next step after that is in-process Rust inference
+  (tch/candle) to delete the socket round trip entirely.
 - **Training.** Trivial on a 3080 (<1 min/gen at this width). Widen 256→512 + SCReLU
   once outcome-grounded gains are confirmed (panel deferred this to isolate effects).
 - **Generations to cross SF.** Unknown a priori, but the loop *provably* self-improves

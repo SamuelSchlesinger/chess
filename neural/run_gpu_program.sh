@@ -12,6 +12,10 @@
 # also swap in GPU-batched-eval self-play for throughput (neural/GPU_PLAN.md).
 #
 # Usage: neural/run_gpu_program.sh [NGEN] [GAMES] [SIMS] [THREADS]
+# Optional GPU-batched leaf evaluation (the 3080 throughput unlock, FINDINGS §8):
+#   BATCH_EVAL=1 [SP_THREADS=256] [BATCH_LEAVES=16] neural/run_gpu_program.sh ...
+# (self-play leaves then evaluate on the GPU via neural/eval_server.py; THREADS
+#  becomes games-in-flight. Keep BATCH_EVAL=0 on the M4 — its CPU path is faster.)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,11 +30,52 @@ STATE=logs/program_state
 BESTFILE=$STATE/best.txt
 mkdir -p "$STATE" logs nets data
 
+# Batch-eval config: env wins; else the persisted config from the original
+# launch (so a bare resume after a reboot keeps the same mode); else defaults.
+# Under BATCH_EVAL=1 a positional THREADS arg means games-in-flight.
+CFG=$STATE/config
+if [ -z "${BATCH_EVAL+x}" ] && [ -f "$CFG" ]; then . "$CFG"; fi
+BATCH_EVAL=${BATCH_EVAL:-0}
+SP_THREADS=${SP_THREADS:-${4:-256}}
+BATCH_LEAVES=${BATCH_LEAVES:-16}
+printf 'BATCH_EVAL=%s\nSP_THREADS=%s\nBATCH_LEAVES=%s\n' \
+  "$BATCH_EVAL" "$SP_THREADS" "$BATCH_LEAVES" > "$CFG"
+SOCK="/tmp/chess_eval_$$.sock"
+SERVER_PID=""
+
+start_server() { # $1 = net to serve
+  $PY neural/eval_server.py --net "$1" --socket "$SOCK" --max-batch 2048 \
+      >> logs/eval_server.log 2>&1 &
+  SERVER_PID=$!
+  for _ in $(seq 1 240); do
+    [ -S "$SOCK" ] && break
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
+    sleep 0.5
+  done
+  if [ ! -S "$SOCK" ]; then
+    say "FATAL: eval server did not come up; last log lines:"
+    tail -5 logs/eval_server.log | while IFS= read -r l; do say "  $l"; done
+    status "FATAL: eval server"; exit 1
+  fi
+}
+stop_server() {
+  if [ -n "$SERVER_PID" ]; then
+    kill "$SERVER_PID" 2>/dev/null
+    wait "$SERVER_PID" 2>/dev/null
+  fi
+  SERVER_PID=""; rm -f "$SOCK"
+}
+trap 'rc=$?; stop_server; say "EXITED rc=$rc"' EXIT
+
 ts() { date +"%Y-%m-%d %H:%M:%S"; }
 say() { echo "[$(ts)] $*"; }
 status() { echo "$*" > logs/STATUS; }
 
-say "program start: $NGEN gens x $GAMES games @ $SIMS sims, $THREADS threads"
+if [ "$BATCH_EVAL" = "1" ]; then
+  say "program start: $NGEN gens x $GAMES games @ $SIMS sims, GPU-batched eval ($SP_THREADS games in flight, K=$BATCH_LEAVES)"
+else
+  say "program start: $NGEN gens x $GAMES games @ $SIMS sims, $THREADS threads (local CPU eval)"
+fi
 
 # --- gen 0: warm-start the value from Stockfish evals (idempotent) ------------
 if [ ! -f nets/gpu_gen0.azn ]; then
@@ -67,10 +112,22 @@ for g in $(seq 1 "$NGEN"); do
   alag=$([ "$g" -ge 2 ] && echo "nets/gpu_gen$((g-1)).azn" || echo "nets/gpu_gen0.azn")
 
   say "gen$g: self-play from $(basename "$BEST")"; status "gen$g/$NGEN: self-play"
-  ./target/release/selfplay --games "$GAMES" --out "$data" --net "$BEST" \
-      --sims "$SIMS" --threads "$THREADS" --seed "$g" 2>&1 | tail -1
-  if ! ls "$data".part* >/dev/null 2>&1; then
-    say "FATAL: gen$g self-play produced no data — aborting"; status "FATAL: gen$g self-play"; exit 1
+  rm -f "$data".part*   # stale shards from an aborted attempt must not mix in
+  if [ "$BATCH_EVAL" = "1" ]; then
+    start_server "$BEST"
+    ./target/release/selfplay --games "$GAMES" --out "$data" --net "$BEST" \
+        --sims "$SIMS" --threads "$SP_THREADS" --batch-leaves "$BATCH_LEAVES" \
+        --eval-server "$SOCK" --seed "$g" 2>&1 | tail -1
+    sp_rc=$?   # pipefail: reflects selfplay, not tail
+    stop_server
+  else
+    ./target/release/selfplay --games "$GAMES" --out "$data" --net "$BEST" \
+        --sims "$SIMS" --threads "$THREADS" --seed "$g" 2>&1 | tail -1
+    sp_rc=$?
+  fi
+  if [ "$sp_rc" -ne 0 ] || ! ls "$data".part* >/dev/null 2>&1; then
+    say "FATAL: gen$g self-play failed (rc=$sp_rc) — aborting"
+    status "FATAL: gen$g self-play"; exit 1
   fi
   dec=$(decisive "$data"); say "gen$g: decisive ${dec}% (want >=15%)"
 
