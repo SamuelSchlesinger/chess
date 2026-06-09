@@ -1,1 +1,0 @@
-nets/gpu_gen1.azn

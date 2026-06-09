@@ -4,3 +4,6 @@
 /neural/.venv
 /data/*.parquet
 __pycache__/
+logs/
+data/
+nets/
