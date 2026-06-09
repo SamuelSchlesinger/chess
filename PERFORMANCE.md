@@ -13,14 +13,14 @@ iteration harness is `cargo run --release --example nps`.
 
 ## Headline
 
-| Metric | Baseline (classical rays + make/unmake filter) | Final (magic + pin-aware legal gen) | Speedup |
-|--------|-----------------------------------------------|-------------------------------------|---------|
-| perft startpos d5 | 66.5 ms (73 Mnps) | **10.6 ms (457 Mnps)** | **6.3×** |
-| perft kiwipete d4 | 53.2 ms (73 Mnps) | **8.1 ms (502 Mnps)** | **6.5×** |
-| perft midgame d4 | 50.0 ms (78 Mnps) | **6.1 ms (643 Mnps)** | **8.2×** |
-| legal movegen (kiwipete) | 615 ns | **84 ns** | 7.3× |
+| Metric | Baseline (classical rays + make/unmake filter) | Round 1 (magic + pin-aware legal gen) | Final (after round 2) | Speedup |
+|--------|---------------------------|---------------------------|---------------------------|---------|
+| perft startpos d5 | 66.5 ms (73 Mnps) | 10.6 ms (457 Mnps) | **9.2 ms (530 Mnps)** | **7.2×** |
+| perft kiwipete d4 | 53.2 ms (73 Mnps) | 8.1 ms (502 Mnps) | **7.0 ms (580 Mnps)** | **7.5×** |
+| perft midgame d4 | 50.0 ms (78 Mnps) | 6.1 ms (643 Mnps) | **5.2 ms (748 Mnps)** | **9.6×** |
+| legal movegen (kiwipete) | 615 ns | 84 ns | **68 ns** | 9.0× |
 
-The two changes that mattered, in order of impact:
+The two changes that mattered most, in order of impact:
 
 1. **Pin-aware legal generation** (the dominant win), and
 2. **Magic bitboards** for sliding attacks.
