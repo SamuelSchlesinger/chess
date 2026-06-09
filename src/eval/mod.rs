@@ -8,9 +8,11 @@
 //! evaluator ignores them (default no-ops), so there is no cost today.
 
 pub mod handcrafted;
+pub mod nnue;
 mod pesto_tables;
 
 pub use handcrafted::HandcraftedEval;
+pub use nnue::{Nnue, NnueEval};
 
 use crate::board::Board;
 use crate::moves::Move;

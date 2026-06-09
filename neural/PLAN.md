@@ -151,3 +151,72 @@ cores** → **~70M positions/hour**, **~1.7B/day** on the Mac CPU alone. Disk:
   a first dataset + baseline NNUE train on the Mac (P1).
 - **Blocked-on-you:** 3080 access window; install permission for SF/cutechess;
   framework call.
+
+---
+
+## 8. Sharpened by the research synthesis
+
+**The binding number: ~135 ns/node.** The engine runs ~7.5 M nps single-threaded
+(measured, M4 Pro), so any *in-search* evaluator gets ~135 ns/node. A board-
+attention eval (d=256, L=6, 64 tokens) is ~1.3 GFLOP/eval → **100–1000× too slow**
+to call per node in alpha-beta. This is decisive and forces a **two-arm** program:
+
+- **ARM 1 — the engine workhorse:** a classic **HalfKA-style NNUE** (int16
+  accumulator, int8 clipped-ReLU tail, ~10–40 M params dominated by the sparse
+  feature transformer), trained in **PyTorch** (the `nnue-pytorch` lineage),
+  exported **bit-exact** into our Rust `Evaluator` incremental hooks. This is the
+  path to engine strength. (Our `eval::nnue` float inference + loader is the v0
+  of the Rust side; the 768 feature set is the warm-up before HalfKA.)
+- **ARM 2 — the science:** a deeper **attention/relational board net** where the
+  `slm-optimization` depth-trainability machinery (`1/√D` residual scaling re-keyed
+  to *actual* depth, QK-norm, WSD schedule, loss-spike guards) genuinely applies.
+  Run as a **teacher** (distilled into ARM 1) and as a clean, fully-observable
+  **learning-dynamics testbed** — the corpus's program, with a ground-truth oracle.
+
+**The falsifiable superiority claim (narrow):** chess has **exact symmetries**
+SF's HalfKA MLP doesn't structurally enforce — the color-swap antisymmetry
+`eval(pos) = −eval(colorflip(pos))`, horizontal mirror, and relational
+pieces-on-squares structure (attention captures it natively; SF only sees
+hand-injected "Threat" features). A **symmetry-correct, distance-aware** net should
+hit a given eval accuracy with **fewer params / less data** → a better *teacher* →
+better-than-SF-self-referential targets a fast *student* distills into at the same
+135 ns/node budget. In gradient terms: **WDL-sigmoid targets bound gradient
+magnitude** vs raw-cp regression; for ARM 1 the corpus's residual-variance story is
+moot (no depth) and is replaced by the real frontier the corpus never faced —
+**quantization-aware training** of the int8/16 accumulator.
+
+**Data, unblocked.** Start on the **free Lichess evals DB (~340 M SF-labeled
+positions, HuggingFace `Lichess/chess-position-evaluations`)** — enough for a first
+credible NNUE with zero generation. `gen-data` self-play is the *asset* for the
+later anneal (curriculum: shallow labels → deep-search / self-play / tablebase-exact
+in the WSD decay tail). Ladder: 1–10 M (debug the loop) → 50–200 M (first credible
+net) → 0.5–2 B (competitive).
+
+**Measurement (import wholesale, first).** Primary cheap proxy each iteration:
+held-out position MSE/MAE + top-1 move-agreement vs a strong reference. Gated
+ground truth: **Elo vs Stockfish at FIXED NODES** (`go nodes N`, already supported)
+via cutechess-cli — fixed-*nodes* isolates eval-quality-per-node (fixed-*time*
+rewards SF's hand-tuned SIMD; fixed-*depth* is incomparable). Pin matches: 1
+thread, equal 64 MB hash, UHO opening book, swapped colors, SPRT(α=β=0.05). **σ
+calibration first** (≥5 identical seeds for MSE σ; separately the much larger Elo σ)
+— the corpus's σ=0.003 placeholder does NOT transfer. Report fixed-nodes as
+"nodes-normalized Elo" + a fixed-time confirmation; never claim "beat SF" on
+fixed-nodes alone.
+
+**Honest odds (the bottom line you asked for).**
+| Milestone | Claim | Odds |
+|---|---|---|
+| **W1** | our trained net beats our PeSTO by **>100 Elo** at fixed nodes | near-certain (first milestone) |
+| **W2** | positive Elo vs **strength-reduced** SF | likely |
+| **W3** | within **−200 Elo** of full SF at equal fixed nodes | serious, plausible with effort |
+| **W4** | **beat full SF** at equal nodes | low-odds moonshot (single digits) |
+
+SF's shallow/quantized/hand-featured eval is a *direct consequence* of the 135 ns
+budget, trained on ~16 B SF-self-play + billions of Leela positions near a hard CPU
+local optimum — not a missed opportunity. **The durable deliverable is the science:**
+a fully-observable eval-quality-per-node frontier as a function of architecture and
+training, valuable even landing 100–300 Elo short. Timeline: P0–P1 ~2–4 weeks
+(harness + v1 loop on free data); P2–P3 ~1–3 months (own data + inductive-bias
+ablations); P4 ongoing. **Biggest risk: uncritical transfer** of corpus defaults
+that are keyed to a deep VRAM-bound autoregressive LM and are moot for a shallow
+quantized chess regressor — apply selectively, measure everything.
