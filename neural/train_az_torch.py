@@ -67,8 +67,10 @@ def load_selfplay(prefix, max_rows):
     return feats, z, q, pidx, pp
 
 
-def load_value(prefix, max_rows, blend):
-    paths = sorted(glob.glob(prefix + "*")) if not os.path.isfile(prefix) else [prefix]
+def load_value(prefixes, max_rows, blend):
+    paths = []
+    for pre in prefixes:
+        paths += sorted(glob.glob(pre + "*")) if not os.path.isfile(pre) else [pre]
     feats, vals = [], []
     for p in paths:
         d = open(p, "rb").read()
@@ -159,7 +161,8 @@ def export(net, path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--records", default=None, help="self-play prefix (policy/value RL)")
-    ap.add_argument("--value-data", default=None, help="label-sf prefix (value warm-start)")
+    ap.add_argument("--value-data", nargs="+", default=None,
+                    help="label-sf prefix(es) (value warm-start)")
     ap.add_argument("--out", default="nets/az.azn")
     ap.add_argument("--warm", default=None)
     ap.add_argument("--anchor", default=None)
@@ -240,7 +243,7 @@ def main():
                 loss = loss + (-(Pt[b] * logp).sum(dim=1)).mean()
             opt.zero_grad(); loss.backward(); opt.step()
             zero_pad_row(net)
-            run += float(loss); nb += 1
+            run += loss.item(); nb += 1
         print(f"epoch {ep+1}/{args.epochs}: loss {run/nb:.4f}  ({time.time()-te:.1f}s)")
     export(net, args.out)
     print(f"wrote {args.out}")

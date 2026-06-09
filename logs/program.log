@@ -1,0 +1,145 @@
+[13:36:32] launching program in tmux 'chesstrain' (survives Claude restarts)
+[2026-06-09 13:36:32] program start: 6 gens x 700 games @ 400 sims, 6 threads
+[2026-06-09 13:36:32] gen0: warm-start value from SF
+usage: train_az_torch.py [-h] [--records RECORDS] [--value-data VALUE_DATA]
+                         [--out OUT] [--warm WARM] [--anchor ANCHOR]
+                         [--freeze-value] [--value-blend VALUE_BLEND]
+                         [--beta BETA] [--blend BLEND] [--epochs EPOCHS]
+                         [--batch BATCH] [--lr LR] [--max-rows MAX_ROWS]
+                         [--device DEVICE]
+train_az_torch.py: error: unrecognized arguments: data/sp2_sf
+[2026-06-09 13:36:33] current best: nets/gpu_gen0.azn
+[2026-06-09 13:36:33] gen1: self-play from gpu_gen0.azn
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:33] gen1: decisive 0.0% (want >=15%)
+[2026-06-09 13:36:33] gen1: train value-unfreeze (q-target, anchor=gpu_gen0.azn)
+device: mps
+loaded 0 positions in 0s
+Traceback (most recent call last):
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 250, in <module>
+    main()
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 197, in main
+    load_azn(net, args.warm, dev); print(f"warm-started from {args.warm}")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 123, in load_azn
+    d = open(path, "rb").read()
+        ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nets/gpu_gen0.azn'
+[2026-06-09 13:36:33] gen1: Elo gate vs best
+[2026-06-09 13:36:33] gen1: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:33] gen1: REJECT (Elo ?); keep gpu_gen0.azn
+[2026-06-09 13:36:33] gen2: self-play from gpu_gen0.azn
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:33] gen2: decisive 0.0% (want >=15%)
+[2026-06-09 13:36:33] gen2: train value-unfreeze (q-target, anchor=gpu_gen1.azn)
+device: mps
+loaded 0 positions in 0s
+Traceback (most recent call last):
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 250, in <module>
+    main()
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 197, in main
+    load_azn(net, args.warm, dev); print(f"warm-started from {args.warm}")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 123, in load_azn
+    d = open(path, "rb").read()
+        ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nets/gpu_gen0.azn'
+[2026-06-09 13:36:34] gen2: Elo gate vs best
+[2026-06-09 13:36:34] gen2: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:34] gen2: REJECT (Elo ?); keep gpu_gen0.azn
+[2026-06-09 13:36:34] gen3: self-play from gpu_gen0.azn
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:34] gen3: decisive 0.0% (want >=15%)
+[2026-06-09 13:36:34] gen3: train value-unfreeze (q-target, anchor=gpu_gen2.azn)
+device: mps
+loaded 0 positions in 0s
+Traceback (most recent call last):
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 250, in <module>
+    main()
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 197, in main
+    load_azn(net, args.warm, dev); print(f"warm-started from {args.warm}")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 123, in load_azn
+    d = open(path, "rb").read()
+        ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nets/gpu_gen0.azn'
+[2026-06-09 13:36:35] gen3: Elo gate vs best
+[2026-06-09 13:36:35] gen3: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:35] gen3: REJECT (Elo ?); keep gpu_gen0.azn
+[2026-06-09 13:36:35] gen4: self-play from gpu_gen0.azn
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:35] gen4: decisive 0.0% (want >=15%)
+[2026-06-09 13:36:35] gen4: train value-unfreeze (q-target, anchor=gpu_gen3.azn)
+device: mps
+loaded 0 positions in 0s
+Traceback (most recent call last):
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 250, in <module>
+    main()
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 197, in main
+    load_azn(net, args.warm, dev); print(f"warm-started from {args.warm}")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 123, in load_azn
+    d = open(path, "rb").read()
+        ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nets/gpu_gen0.azn'
+[2026-06-09 13:36:35] gen4: Elo gate vs best
+[2026-06-09 13:36:35] gen4: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:35] gen4: REJECT (Elo ?); keep gpu_gen0.azn
+[2026-06-09 13:36:35] gen5: self-play from gpu_gen0.azn
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:35] gen5: decisive 0.0% (want >=15%)
+[2026-06-09 13:36:35] gen5: train value-unfreeze (q-target, anchor=gpu_gen4.azn)
+device: mps
+loaded 0 positions in 0s
+Traceback (most recent call last):
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 250, in <module>
+    main()
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 197, in main
+    load_azn(net, args.warm, dev); print(f"warm-started from {args.warm}")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 123, in load_azn
+    d = open(path, "rb").read()
+        ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nets/gpu_gen0.azn'
+[2026-06-09 13:36:36] gen5: Elo gate vs best
+[2026-06-09 13:36:36] gen5: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:36] gen5: REJECT (Elo ?); keep gpu_gen0.azn
+[2026-06-09 13:36:36] gen6: self-play from gpu_gen0.azn
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:36] gen6: decisive 0.0% (want >=15%)
+[2026-06-09 13:36:36] gen6: train value-unfreeze (q-target, anchor=gpu_gen5.azn)
+device: mps
+loaded 0 positions in 0s
+Traceback (most recent call last):
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 250, in <module>
+    main()
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 197, in main
+    load_azn(net, args.warm, dev); print(f"warm-started from {args.warm}")
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py", line 123, in load_azn
+    d = open(path, "rb").read()
+        ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nets/gpu_gen0.azn'
+[2026-06-09 13:36:36] gen6: Elo gate vs best
+[2026-06-09 13:36:36] gen6: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[2026-06-09 13:36:36] gen6: REJECT (Elo ?); keep gpu_gen0.azn
+[2026-06-09 13:36:36] PROGRAM DONE. strongest net: nets/gpu_gen0.azn
+[13:41:01] launching program in tmux 'chesstrain' (survives Claude restarts)
+[2026-06-09 13:41:01] program start: 6 gens x 700 games @ 400 sims, 6 threads
+[2026-06-09 13:41:01] gen0: warm-start value from SF
+/Users/samuelschlesinger/projects/games/chess/neural/train_az_torch.py:246: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:839.)
+  run += float(loss); nb += 1
+device: mps
+loaded 2,674,840 positions in 14s
+epoch 1/8: loss 0.1030  (11.9s)
+epoch 2/8: loss 0.0617  (9.6s)
+epoch 3/8: loss 0.0544  (9.0s)
+epoch 4/8: loss 0.0504  (8.7s)
+epoch 5/8: loss 0.0478  (9.1s)
+epoch 6/8: loss 0.0458  (8.3s)
+epoch 7/8: loss 0.0442  (8.3s)
+epoch 8/8: loss 0.0429  (8.6s)
+wrote nets/gpu_gen0.azn
+[2026-06-09 13:42:32] current best: nets/gpu_gen0.azn
+[2026-06-09 13:42:32] gen1: self-play from gpu_gen0.azn
