@@ -53,6 +53,13 @@ train (q-target, anchor-lag-1) → 200-game Elo gate (keep only ≥ +5 Elo vs be
   measured/projected throughput). Keep BATCH_EVAL=0 on the M4 — its CPU path
   is faster than MPS at these batch sizes.
 
+## The Stockfish gauntlet (acceptance metric)
+
+A watcher on the Mac (`tmux` session `sfwatch`, log `logs/sf_gauntlet.log`)
+polls the 3080 program's accepted nets and plays each against Stockfish at a
+fixed equal node budget (100 games @ 800 nodes). The log is the gap-to-SF
+trajectory; the goal line is a positive score at a meaningful budget.
+
 ## The strongest standalone net right now
 
 `nets/azq_pol1.azn` (sharp tanh-correct value + one generation of policy RL):
