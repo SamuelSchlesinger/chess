@@ -12,8 +12,11 @@ per frame from virtual-loss batching), so decode and reply cost one pass per
 frame, not per leaf. Per-connection response order matches request order.
   frame   : [body_len u32][n u16] then n x ([nf u8][nmoves u16],
             nf x u16 feature idx, nmoves x u16 move idx)
-  response: n x ([value f32], nmoves x f32 priors), concatenated
-            (tanh value, softmax over the moves)
+  response: [n x f32 values][all priors f32, items in order], one write per
+            frame (tanh values, softmax over each item's moves). The bulk
+            layout lets the batcher slice numpy arrays per frame instead of
+            packing per item — the per-item Python loop was the throughput
+            ceiling (~25 ms/batch at B=4096 on the 3080).
 
 Usage:
   neural/eval_server.py --net nets/gpu_gen0.azn --socket /tmp/chess_eval.sock
@@ -40,17 +43,23 @@ def reader(conn, q):
             body = f.read(blen)
             if len(body) < blen or n == 0:
                 break
-            items, o = [], 0
-            for _ in range(n):
+            # Decode to per-frame arrays here, on the (many) reader threads,
+            # so the single batcher thread only concatenates.
+            feats_pad = np.full((n, MAX_FEAT), INPUTS, dtype=np.int64)
+            mlens = np.empty(n, dtype=np.int64)
+            moves_parts, o = [], 0
+            for i in range(n):
                 nf = body[o]
                 nm = body[o + 1] | (body[o + 2] << 8)
                 o += 3
                 if nm == 0 or o + 2 * (nf + nm) > blen:
                     raise ValueError(f"malformed frame (nf={nf} nm={nm})")
                 a = np.frombuffer(body, dtype="<u2", offset=o, count=nf + nm)
-                items.append((a[:nf], a[nf:]))
+                feats_pad[i, : min(nf, MAX_FEAT)] = a[:MAX_FEAT if nf > MAX_FEAT else nf]
+                mlens[i] = nm
+                moves_parts.append(a[nf:])
                 o += 2 * (nf + nm)
-            q.put((conn, items))
+            q.put((conn, feats_pad, np.concatenate(moves_parts).astype(np.int64), mlens))
     except OSError:
         pass
     finally:
@@ -82,7 +91,7 @@ def batcher_loop(q, net, dev, max_batch, max_wait):
     served, t0, last = 0, time.time(), time.time()
     while True:
         frames = [q.get()]
-        count = len(frames[0][1])
+        count = len(frames[0][3])
         deadline = time.perf_counter() + max_wait
         while count < max_batch:
             left = deadline - time.perf_counter()
@@ -93,40 +102,40 @@ def batcher_loop(q, net, dev, max_batch, max_wait):
             except queue.Empty:
                 break
             frames.append(fr)
-            count += len(fr[1])
+            count += len(fr[3])
 
-        B = count
-        idx = np.full((B, MAX_FEAT), INPUTS, dtype=np.int64)
-        nmax = max(len(mv) for _, items in frames for _, mv in items)
+        # Assemble entirely with numpy bulk ops (no per-item Python work).
+        idx = np.concatenate([f[1] for f in frames])              # [B, MAX_FEAT]
+        moves = np.concatenate([f[2] for f in frames])            # [total]
+        mlens = np.concatenate([f[3] for f in frames])            # [B]
+        B = len(mlens)
+        nmax = int(mlens.max())
+        starts = np.zeros(B, dtype=np.int64)
+        np.cumsum(mlens[:-1], out=starts[1:])
+        rows = np.repeat(np.arange(B), mlens)
+        cols = np.arange(len(moves)) - np.repeat(starts, mlens)
         midx = np.zeros((B, nmax), dtype=np.int64)
         mask = np.zeros((B, nmax), dtype=bool)
-        i = 0
-        for _, items in frames:
-            for feats, mv in items:
-                idx[i, : min(len(feats), MAX_FEAT)] = feats[:MAX_FEAT]
-                midx[i, : len(mv)] = mv
-                mask[i, : len(mv)] = True
-                i += 1
+        midx[rows, cols] = moves
+        mask[rows, cols] = True
 
         with torch.no_grad():
             v, logits = net(torch.from_numpy(idx).to(dev))
             g = logits.gather(1, torch.from_numpy(midx).to(dev))
             g = g.masked_fill(~torch.from_numpy(mask).to(dev), -1e9)
             p = torch.softmax(g, dim=1)
-            v = v.float().cpu().numpy()
+            v = v.float().cpu().numpy().astype("<f4")
             p = p.float().cpu().numpy()
+        pflat = p[rows, cols].astype("<f4")                       # request order
 
-        i = 0
-        for conn, items in frames:
-            parts = []
-            for _, mv in items:
-                parts.append(struct.pack("<f", float(v[i])))
-                parts.append(p[i, : len(mv)].astype("<f4").tobytes())
-                i += 1
+        oi = 0; om = 0
+        for f in frames:
+            k = len(f[3]); t = int(f[3].sum())
             try:
-                conn.sendall(b"".join(parts))
+                f[0].sendall(v[oi:oi + k].tobytes() + pflat[om:om + t].tobytes())
             except OSError:
                 pass  # game thread went away; its reader will clean up
+            oi += k; om += t
 
         served += B
         now = time.time()

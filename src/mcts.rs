@@ -465,8 +465,9 @@ fn terminal_value(board: &Board) -> f32 {
 /// server does one decode and one reply write per K leaves, not per leaf):
 ///   request : `[body_len u32][n u16]` then n × (`[nf u8][nmoves u16]`,
 ///             `nf × u16` features, `nmoves × u16` move indices)
-///   response: n × (`[value f32]`, `nmoves × f32` priors), concatenated
-///             (tanh value, softmax over the moves)
+///   response: `[n × f32 values]` then all priors (f32, items in order) —
+///             bulk layout so the server slices arrays per frame instead of
+///             packing per item (tanh values, softmax over each item's moves)
 pub struct RemoteGuide {
     w: std::io::BufWriter<std::os::unix::net::UnixStream>,
     r: std::io::BufReader<std::os::unix::net::UnixStream>,
@@ -516,14 +517,14 @@ impl Guide for RemoteGuide {
             .and_then(|_| self.w.flush())
             .expect("eval server write");
 
-        let total: usize = items.iter().map(|(_, m)| 4 + 4 * m.len()).sum();
-        self.resp.resize(total, 0);
+        let n = items.len();
+        let total_moves: usize = items.iter().map(|(_, m)| m.len()).sum();
+        self.resp.resize(4 * n + 4 * total_moves, 0);
         self.r.read_exact(&mut self.resp).expect("eval server closed");
-        let mut out = Vec::with_capacity(items.len());
-        let mut o = 0usize;
-        for (_, moves) in items {
-            let value = f32::from_le_bytes(self.resp[o..o + 4].try_into().unwrap());
-            o += 4;
+        let mut out = Vec::with_capacity(n);
+        let mut o = 4 * n; // priors start after the value block
+        for (k, (_, moves)) in items.iter().enumerate() {
+            let value = f32::from_le_bytes(self.resp[4 * k..4 * k + 4].try_into().unwrap());
             let priors = (0..moves.len())
                 .map(|i| {
                     f32::from_le_bytes(self.resp[o + 4 * i..o + 4 * i + 4].try_into().unwrap())
