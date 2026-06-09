@@ -267,7 +267,11 @@ impl<E: Evaluator> Engine<E> {
         self.nodes = 0;
         self.seldepth = 0;
         self.stopped = false;
-        self.stop.store(false, Ordering::Relaxed);
+        // NOTE: we deliberately do NOT clear the shared `stop` atomic here. The
+        // search runs on a worker thread; the *driver* clears it before starting
+        // (the UCI loop does so on the main thread before spawning). Clearing it
+        // here would race with a `stop` arriving immediately after `go` and could
+        // silently drop it (hanging an otherwise-unbounded `go infinite`).
         self.start = Instant::now();
         self.node_limit = limits.nodes;
         self.tt.new_generation();
@@ -310,7 +314,7 @@ impl<E: Evaluator> Engine<E> {
             let mut alpha = (prev - delta).max(-INFINITY);
             let mut beta = (prev + delta).min(INFINITY);
             loop {
-                let score = self.negamax(board, depth, alpha, beta, 0);
+                let score = self.negamax(board, depth, alpha, beta, 0, true);
                 if self.stopped {
                     return score;
                 }
@@ -325,7 +329,7 @@ impl<E: Evaluator> Engine<E> {
                 delta += delta / 2;
             }
         } else {
-            self.negamax(board, depth, -INFINITY, INFINITY, 0)
+            self.negamax(board, depth, -INFINITY, INFINITY, 0, true)
         }
     }
 
@@ -336,7 +340,13 @@ impl<E: Evaluator> Engine<E> {
         mut alpha: i32,
         mut beta: i32,
         ply: usize,
+        null_ok: bool,
     ) -> i32 {
+        // Ply ceiling: check extensions could otherwise drive `ply` past the
+        // fixed-size killer/PV tables and panic. Bail to a static eval.
+        if ply >= MAX_PLY - 1 {
+            return self.eval.evaluate(board);
+        }
         self.data.pv_len[ply] = 0;
         let is_root = ply == 0;
         let is_pv = beta - alpha > 1;
@@ -397,8 +407,11 @@ impl<E: Evaluator> Engine<E> {
 
         let static_eval = self.eval.evaluate(board);
 
-        // Null-move pruning.
-        if !is_pv
+        // Null-move pruning. `null_ok` forbids two nulls in a row: a double null
+        // restores the original Zobrist key while inflating the half-move clock,
+        // which would make `is_repetition` report a spurious draw.
+        if null_ok
+            && !is_pv
             && !in_check
             && depth >= 3
             && static_eval >= beta
@@ -408,7 +421,7 @@ impl<E: Evaluator> Engine<E> {
             let undo = board.make_null_move();
             self.eval.on_make(board, Move::NONE);
             self.path.push(board.hash());
-            let score = -self.negamax(board, depth - 1 - r, -beta, -beta + 1, ply + 1);
+            let score = -self.negamax(board, depth - 1 - r, -beta, -beta + 1, ply + 1, false);
             self.path.pop();
             board.unmake_null_move(undo);
             self.eval.on_unmake(board, Move::NONE);
@@ -455,16 +468,16 @@ impl<E: Evaluator> Engine<E> {
 
             let new_depth = depth - 1;
             let score = if i == 0 {
-                -self.negamax(board, new_depth, -beta, -alpha, ply + 1)
+                -self.negamax(board, new_depth, -beta, -alpha, ply + 1, true)
             } else {
                 // Principal-variation search with a null window (+ LMR).
                 let mut s =
-                    -self.negamax(board, new_depth - reduction, -alpha - 1, -alpha, ply + 1);
+                    -self.negamax(board, new_depth - reduction, -alpha - 1, -alpha, ply + 1, true);
                 if s > alpha && reduction > 0 {
-                    s = -self.negamax(board, new_depth, -alpha - 1, -alpha, ply + 1);
+                    s = -self.negamax(board, new_depth, -alpha - 1, -alpha, ply + 1, true);
                 }
                 if s > alpha && s < beta {
-                    s = -self.negamax(board, new_depth, -beta, -alpha, ply + 1);
+                    s = -self.negamax(board, new_depth, -beta, -alpha, ply + 1, true);
                 }
                 s
             };
@@ -512,31 +525,47 @@ impl<E: Evaluator> Engine<E> {
         if ply > self.seldepth as usize {
             self.seldepth = ply as i32;
         }
-
-        let stand_pat = self.eval.evaluate(board);
-        if stand_pat >= beta {
-            return stand_pat;
-        }
-        if stand_pat > alpha {
-            alpha = stand_pat;
-        }
         if ply >= MAX_PLY - 1 {
-            return stand_pat;
+            return self.eval.evaluate(board);
         }
 
-        // Tactical moves only.
-        let moves = board.legal_moves();
+        let in_check = board.in_check();
         let mut scored: [(i32, Move); 256] = [(0, Move::NONE); 256];
         let mut count = 0;
-        for &mv in moves.iter() {
-            if mv.is_capture() || mv.is_promotion() {
-                scored[count] = (self.capture_score(board, mv), mv);
+        let mut best;
+
+        if in_check {
+            // In check there is no "stand pat" — all legal evasions must be
+            // searched, and no legal move means checkmate.
+            let moves = board.legal_moves();
+            if moves.is_empty() {
+                return -MATE + ply as i32;
+            }
+            let stm = board.side_to_move().index();
+            for &mv in moves.iter() {
+                scored[count] = (self.move_score(board, mv, Move::NONE, ply, stm), mv);
                 count += 1;
+            }
+            best = -INFINITY;
+        } else {
+            let stand_pat = self.eval.evaluate(board);
+            if stand_pat >= beta {
+                return stand_pat;
+            }
+            if stand_pat > alpha {
+                alpha = stand_pat;
+            }
+            best = stand_pat;
+            // Tactical moves only.
+            for &mv in board.legal_moves().iter() {
+                if mv.is_capture() || mv.is_promotion() {
+                    scored[count] = (self.capture_score(board, mv), mv);
+                    count += 1;
+                }
             }
         }
         scored[..count].sort_unstable_by_key(|x| core::cmp::Reverse(x.0));
 
-        let mut best = stand_pat;
         for &(_, mv) in &scored[..count] {
             let undo = board.make_move(mv);
             self.eval.on_make(board, mv);

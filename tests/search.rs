@@ -112,6 +112,25 @@ fn robustness_legal_best_move_over_many_positions() {
 }
 
 #[test]
+fn deep_search_on_forcing_positions_is_stable() {
+    // Deep searches of check-rich / forcing positions exercise the check
+    // extension (ply bound), quiescence-in-check, and null-move paths. Must
+    // never panic and must return a legal move.
+    let mut engine = Engine::new();
+    for fen in [
+        "1k5r/pP3ppp/3p2b1/1BN1n3/1Q2P3/P1B5/KP3P1P/7q w - - 1 0", // forced mate, many checks
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "6k1/5ppp/8/8/8/8/8/R6K w - - 0 1",
+    ] {
+        let board = Board::from_fen(fen).unwrap();
+        let a = engine.analyze(&board, &Limits::depth(14));
+        let legal = board.legal_moves();
+        assert!(legal.is_empty() || legal.contains(a.best_move), "{fen}");
+    }
+}
+
+#[test]
 fn self_play_reaches_a_result() {
     // The engine plays both sides at a shallow depth: every move must be legal,
     // and the game must terminate (a result, or the ply cap) without panicking.

@@ -11,7 +11,8 @@
 use chess::eval::mate_in_moves;
 use chess::{Analysis, Board, Engine, Limits, SearchInfo};
 use std::io::{self, BufRead, Write};
-use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 
 fn main() {
@@ -41,7 +42,7 @@ fn main() {
                 println!("readyok");
             }
             "ucinewgame" => {
-                join(&mut search, &mut engine);
+                join(&mut search, &mut engine, &stop);
                 if let Some(e) = engine.as_mut() {
                     e.new_game();
                 }
@@ -52,18 +53,18 @@ fn main() {
                 if rest.contains("name hash")
                     && let Some(v) = parse_after(&rest, "value")
                 {
-                    join(&mut search, &mut engine);
+                    join(&mut search, &mut engine, &stop);
                     if let Some(e) = engine.as_mut() {
                         e.resize_tt(v as usize);
                     }
                 }
             }
             "position" => {
-                join(&mut search, &mut engine);
+                join(&mut search, &mut engine, &stop);
                 (board, history) = parse_position(line);
             }
             "go" => {
-                join(&mut search, &mut engine);
+                join(&mut search, &mut engine, &stop);
                 let limits = parse_go(line);
                 let mut e = engine.take().expect("engine available");
                 e.set_history(&history);
@@ -80,7 +81,7 @@ fn main() {
             }
             "quit" => {
                 stop.store(true, Ordering::Relaxed);
-                join(&mut search, &mut engine);
+                join(&mut search, &mut engine, &stop);
                 break;
             }
             _ => {}
@@ -88,12 +89,19 @@ fn main() {
     }
 }
 
-/// Join a running search thread, restoring the engine.
-fn join(search: &mut Option<JoinHandle<Engine>>, engine: &mut Option<Engine>) {
-    if let Some(handle) = search.take()
-        && let Ok(e) = handle.join()
-    {
-        *engine = Some(e);
+/// Stop and join a running search thread, restoring the engine. Signalling stop
+/// first is essential: an unbounded `go infinite` search never returns on its
+/// own, so joining without it would deadlock the whole UCI loop.
+fn join(
+    search: &mut Option<JoinHandle<Engine>>,
+    engine: &mut Option<Engine>,
+    stop: &Arc<AtomicBool>,
+) {
+    if let Some(handle) = search.take() {
+        stop.store(true, Ordering::Relaxed);
+        if let Ok(e) = handle.join() {
+            *engine = Some(e);
+        }
     }
 }
 
