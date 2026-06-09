@@ -357,11 +357,16 @@ impl Board {
         }
 
         // Update castling rights (king/rook moves, or rook captured on home sq).
-        let new_castling =
-            CastlingRights(self.castling.0 & CASTLE_RIGHTS_MASK[from.index()] & CASTLE_RIGHTS_MASK[to.index()]);
-        if new_castling != self.castling {
-            self.hash ^= zobrist::castling_key(self.castling) ^ zobrist::castling_key(new_castling);
-            self.castling = new_castling;
+        // Skip entirely once no rights remain — true for most deep-subtree nodes.
+        if self.castling.0 != 0 {
+            let new_castling = CastlingRights(
+                self.castling.0 & CASTLE_RIGHTS_MASK[from.index()] & CASTLE_RIGHTS_MASK[to.index()],
+            );
+            if new_castling != self.castling {
+                self.hash ^=
+                    zobrist::castling_key(self.castling) ^ zobrist::castling_key(new_castling);
+                self.castling = new_castling;
+            }
         }
 
         // Set the new en-passant square on a double push, and add its hash

@@ -325,21 +325,28 @@ impl Board {
             self.add_split(from, targets, them_bb, list);
         }
 
-        // Diagonal sliders (bishops + queens).
-        let mut diag =
-            self.pieces_colored(PieceType::Bishop, us) | self.pieces_colored(PieceType::Queen, us);
-        while let Some(from) = diag.pop_lsb() {
-            let mut targets = attacks::bishop_attacks(from, occ) & !us_bb & check_mask;
+        // Sliders — each piece visited once (queens use the combined attack
+        // rather than appearing in both a diagonal and an orthogonal pass).
+        let avail = !us_bb & check_mask;
+        let mut bishops = self.pieces_colored(PieceType::Bishop, us);
+        while let Some(from) = bishops.pop_lsb() {
+            let mut targets = attacks::bishop_attacks(from, occ) & avail;
             if pinned.has(from) {
                 targets &= attacks::line(king, from);
             }
             self.add_split(from, targets, them_bb, list);
         }
-        // Orthogonal sliders (rooks + queens).
-        let mut orth =
-            self.pieces_colored(PieceType::Rook, us) | self.pieces_colored(PieceType::Queen, us);
-        while let Some(from) = orth.pop_lsb() {
-            let mut targets = attacks::rook_attacks(from, occ) & !us_bb & check_mask;
+        let mut rooks = self.pieces_colored(PieceType::Rook, us);
+        while let Some(from) = rooks.pop_lsb() {
+            let mut targets = attacks::rook_attacks(from, occ) & avail;
+            if pinned.has(from) {
+                targets &= attacks::line(king, from);
+            }
+            self.add_split(from, targets, them_bb, list);
+        }
+        let mut queens = self.pieces_colored(PieceType::Queen, us);
+        while let Some(from) = queens.pop_lsb() {
+            let mut targets = attacks::queen_attacks(from, occ) & avail;
             if pinned.has(from) {
                 targets &= attacks::line(king, from);
             }

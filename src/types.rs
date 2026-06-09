@@ -211,9 +211,12 @@ impl File {
         if i < 8 { Some(File(i)) } else { None }
     }
 
+    /// Index `0..8`. Masked with `& 7` so the compiler can prove every
+    /// file-keyed table lookup is in-bounds and elide the bounds check (a `File`
+    /// is always `0..8`, so the mask is a semantic no-op).
     #[inline]
     pub const fn index(self) -> usize {
-        self.0 as usize
+        (self.0 & 7) as usize
     }
 
     #[inline]
@@ -251,9 +254,11 @@ impl Rank {
         if i < 8 { Some(Rank(i)) } else { None }
     }
 
+    /// Index `0..8`, masked with `& 7` for bounds-check elision (see
+    /// [`File::index`]).
     #[inline]
     pub const fn index(self) -> usize {
-        self.0 as usize
+        (self.0 & 7) as usize
     }
 
     #[inline]
@@ -302,10 +307,13 @@ impl Square {
         Square(rank.0 * 8 + file.0)
     }
 
-    /// Raw `0..64` index.
+    /// Raw `0..64` index. Masked with `& 63` so the compiler can prove every
+    /// square-keyed table lookup (attack tables, `between`/`line`, the mailbox)
+    /// is in-bounds and elide the bounds check; a `Square` is always `0..64`, so
+    /// the mask is a semantic no-op.
     #[inline]
     pub const fn index(self) -> usize {
-        self.0 as usize
+        (self.0 & 63) as usize
     }
 
     #[inline]
