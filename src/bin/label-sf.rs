@@ -138,7 +138,6 @@ fn main() {
         let cursor = cursor.clone();
         let done = done.clone();
         let cfg = cfg.clone();
-        let start = start;
         handles.push(std::thread::spawn(move || {
             let mut sf = Sf::spawn(&cfg.sf, cfg.nodes);
             let path = format!("{}.part{}", cfg.output, t);
