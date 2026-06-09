@@ -109,6 +109,63 @@ improvement: training only the policy head on the search-improved visit
 distribution makes the net convert positions its parent drew. The two arms,
 merged, learn. This is the central positive result of the program.
 
+### 5a. The plateau: policy-only RL saturates at the search fixed point
+
+Continuing the warm-started loop for three more generations (value still frozen,
+sims fixed at 256) shows the gain is **one-shot**:
+
+```
+  gen-1 vs warm    +58 Elo   <- the jump
+  gen-2 vs gen-1   −0  Elo   [−23,+23]
+  gen-3 vs gen-2   −6  Elo   [−17, +5]
+  gen-4 vs gen-3   −0  Elo   (60/60 draws)
+```
+
+This is not a bug; it is a *fixed point*. With the value and the search budget
+both frozen, the MCTS visit distribution is a **deterministic function** of the
+net. Once gen-1's policy reproduces that distribution, every later generation
+trains on the very targets it already emits → no gradient signal → it stands
+still (gen-4 vs gen-3 is literally all draws). The loop converged to the best
+policy that a *fixed* value at *fixed* depth can express. **To climb past it you
+must move one of the frozen inputs:**
+
+1. **Unfreeze the value**, co-trained on game *outcomes* — outcome-grounded labels
+   have no teacher ceiling (this is the lever that can pass SF; it needs variance
+   control so drawish early outcomes don't corrupt the SF-distilled value).
+2. **Deepen the search** (more sims) — a better policy-improvement operator emits
+   sharper targets, moving the fixed point up; the policy then chases a *moving*,
+   improving target instead of a static one.
+3. **Widen the trunk** — more capacity to express a sharper value/policy.
+
+The plateau therefore *localizes the binding constraint*: it is no longer the
+loop's correctness (proven by the +58 jump) but the **value's ceiling** — and two
+direct lever tests pin that down:
+
+```
+  deeper TRAINING targets (512-sim self-play) -> retrain policy, play @256:
+      gen2hi vs gen1  =  −4 Elo [−23,+15]   (NO help)
+  deeper PLAY-TIME search, same warm net:
+      az_warm @512 vs @256  =  +64 Elo [+17,+114]   (large help)
+```
+
+The asymmetry is the whole story. Giving the *policy trainer* deeper search does
+nothing, because against a **frozen value** deeper search confirms the same
+best moves — the policy already sits at that value's fixed point. But giving the
+*player* deeper search adds **+64 Elo per doubling**, because search is a genuine
+amplifier of a *good* value (the AlphaZero thesis, reproduced on our net). So:
+
+- The **value is the binding constraint**, not policy capacity or target depth.
+- A **good value + more search compounds** (+64/doubling) — the no-ceiling
+  direction that works *today*, at play time.
+- The single highest-value lever is therefore **unfreezing the value and
+  co-training it on game outcomes** (§6 lever 1): outcome labels have no teacher
+  ceiling, and every gain there is then *multiplied* by search at play time.
+
+This is the precise, falsifiable map the program was meant to produce: we know
+what is binding (value ceiling), what is not (policy/target depth), and what
+compounds (search × value) — so the remaining work is a known scaling program,
+not a search for an idea.
+
 ## 6. The thesis: distill the value, RL the policy
 
 Neither arm alone reaches the goal:
