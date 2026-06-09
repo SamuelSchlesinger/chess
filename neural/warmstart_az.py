@@ -90,7 +90,9 @@ class Net(nn.Module):
         return nn.relu(self.h(acc))
 
     def __call__(self, idx):
-        return self.v(self.trunk(idx))[:, 0]
+        # tanh to match Rust inference (policyvalue.rs value()): train in the same
+        # [-1,1] space as the target, else inference silently compresses the value.
+        return mx.tanh(self.v(self.trunk(idx))[:, 0])
 
 
 def export(net, path):

@@ -41,14 +41,16 @@ def stm_features(b34):
 
 
 def load(prefix, max_rows):
+    """Record: [packed 34][result i8][root_q i16][n u8] then n×[mi u16][vis u16]."""
     paths = sorted(glob.glob(prefix + "*")) if not os.path.isfile(prefix) else [prefix]
-    feats, vals, pol_idx, pol_p = [], [], [], []
+    feats, vals, qs, pol_idx, pol_p = [], [], [], [], []
     for p in paths:
         data = open(p, "rb").read()
         o = 0
-        while o + 36 <= len(data):
+        while o + 38 <= len(data):
             b34 = data[o : o + 34]; o += 34
             result = struct.unpack("b", data[o : o + 1])[0]; o += 1
+            root_q = struct.unpack("<h", data[o : o + 2])[0] / 10000.0; o += 2
             n = data[o]; o += 1
             moves = []
             tot = 0
@@ -61,10 +63,11 @@ def load(prefix, max_rows):
             z = float(result if sw else -result)  # outcome, side-to-move
             idx = np.array([m for m, _ in moves], dtype=np.int32)
             pp = np.array([v / max(1, tot) for _, v in moves], dtype=np.float32)
-            feats.append(f); vals.append(z); pol_idx.append(idx); pol_p.append(pp)
+            feats.append(f); vals.append(z); qs.append(root_q)
+            pol_idx.append(idx); pol_p.append(pp)
             if len(feats) >= max_rows:
-                return feats, vals, pol_idx, pol_p
-    return feats, vals, pol_idx, pol_p
+                return feats, vals, qs, pol_idx, pol_p
+    return feats, vals, qs, pol_idx, pol_p
 
 
 class Net(nn.Module):
@@ -79,7 +82,9 @@ class Net(nn.Module):
         acc = self.ft.bias + mx.sum(self.ft.weight.T[idx], axis=1)
         acc = mx.clip(acc, 0.0, 1.0)
         h = nn.relu(self.h(acc))
-        return self.v(h)[:, 0], self.p(h)
+        # tanh to match Rust inference (policyvalue.rs value()): train value in the
+        # same [-1,1] space as the target, else inference silently compresses it.
+        return mx.tanh(self.v(h)[:, 0]), self.p(h)
 
 
 def load_azn(net, path):
@@ -145,13 +150,17 @@ def main():
     ap.add_argument("--anchor", default=None,
                     help=".azn whose value regularizes the target (defaults to --warm)")
     ap.add_argument("--value-blend", type=float, default=None,
-                    help="UNFREEZE value: target = blend*outcome + (1-blend)*anchor_value")
+                    help="UNFREEZE value: target = blend*y + (1-blend)*anchor_value, "
+                         "where y = beta*outcome + (1-beta)*root_q")
+    ap.add_argument("--beta", type=float, default=0.3,
+                    help="within the bootstrap y: weight on the (sparse) game outcome "
+                         "vs the (dense, draw-informative) MCTS root_q")
     args = ap.parse_args()
     assert not (args.value_blend is not None and args.freeze_value), \
         "--value-blend trains the value; incompatible with --freeze-value"
 
     t0 = time.time()
-    feats, vals, pidx, pp = load(args.records, args.max_rows)
+    feats, vals, qs, pidx, pp = load(args.records, args.max_rows)
     n = len(feats)
     print(f"loaded {n:,} positions in {time.time()-t0:.0f}s")
 
@@ -160,15 +169,17 @@ def main():
     for i, f in enumerate(feats):
         F[i, : min(len(f), MAX_FEAT)] = f[:MAX_FEAT]
     F = mx.array(F)
-    z = np.array(vals, dtype=np.float32)  # game outcome, side-to-move
+    z = np.array(vals, dtype=np.float32)   # game outcome, side-to-move
+    q = np.array(qs, dtype=np.float32)     # MCTS root value, side-to-move
     V = mx.array(z)
 
-    # Outcome-grounded value training with anchor regularization. The self-play
-    # outcome z has no teacher ceiling (it is ground truth), but early-game
-    # outcomes are high-variance and drawish (~0), which would erode the
-    # SF-distilled value. Blending toward a FIXED anchor's value keeps the
-    # material/positional sense while injecting the (no-ceiling) outcome signal:
-    #   target = blend * z  +  (1 - blend) * anchor_value(position)
+    # Outcome-grounded value training with anchor regularization. The binary
+    # outcome z is ground truth (no teacher ceiling) but is ~0 on 90%+ of
+    # positions (drawish self-play), so blending toward it alone just collapses
+    # the value (FINDINGS §5b). The MCTS root_q is a *search-improved* value that
+    # is informative on EVERY position, including drawn ones (the Leela insight).
+    # So bootstrap y = beta*z + (1-beta)*q, then anchor for stability:
+    #   target = blend * y  +  (1 - blend) * anchor_value(position)
     if args.value_blend is not None:
         anchor_path = args.anchor or args.warm
         assert anchor_path, "--value-blend needs --anchor (or --warm) for the value anchor"
@@ -178,10 +189,12 @@ def main():
             av, _ = anc(F[i : i + 8192])
             chunks.append(np.array(av))
         v_anchor = np.concatenate(chunks).astype(np.float32)
-        lam = args.value_blend
-        V = mx.array((lam * z + (1.0 - lam) * v_anchor).astype(np.float32))
-        print(f"value target = {lam:.2f}*outcome + {1-lam:.2f}*anchor[{anchor_path}]"
-              f"  (anchor mean |v|={np.abs(v_anchor).mean():.3f})")
+        lam, beta = args.value_blend, args.beta
+        y = beta * z + (1.0 - beta) * q
+        V = mx.array((lam * y + (1.0 - lam) * v_anchor).astype(np.float32))
+        print(f"value target = {lam:.2f}*({beta:.2f}*z + {1-beta:.2f}*q) + "
+              f"{1-lam:.2f}*anchor[{anchor_path}]  "
+              f"(|q| mean {np.abs(q).mean():.3f}, |anchor| mean {np.abs(v_anchor).mean():.3f})")
 
     net = Net()
     mx.eval(net.parameters())

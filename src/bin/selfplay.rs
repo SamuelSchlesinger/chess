@@ -8,9 +8,11 @@
 //!
 //! Output: variable-length little-endian records (concatenate shards):
 //! ```text
-//!   [packed 34][result_white i8][n u8] then n × ([move_index u16][visits u16])
+//!   [packed 34][result_white i8][root_q i16][n u8] then n × ([move_index u16][visits u16])
 //! ```
 //! `result_white` is the game result from White's perspective (+1/0/-1).
+//! `root_q` is the MCTS root value (side-to-move) × 10000 — a search-improved
+//! value target that is informative even on drawn games (FINDINGS §5b).
 
 use chess::{Game, Mcts, Outcome, PolicyValueNet};
 use std::sync::Arc;
@@ -106,8 +108,8 @@ fn main() {
     );
 }
 
-/// (packed position bytes, MCTS visit policy as (move_index, visits) pairs).
-type Recorded = ([u8; 34], Vec<(u16, u16)>);
+/// (packed position bytes, root_q×10000, MCTS visit policy as (move_index, visits)).
+type Recorded = ([u8; 34], i16, Vec<(u16, u16)>);
 
 fn play(mcts: &mut Mcts<Arc<PolicyValueNet>>, mut rng: u64, sims: u32, out: &mut Vec<u8>) -> usize {
     let mut game = Game::new();
@@ -140,13 +142,14 @@ fn play(mcts: &mut Mcts<Arc<PolicyValueNet>>, mut rng: u64, sims: u32, out: &mut
         if total == 0 {
             break;
         }
+        let qi = (mcts.last_root_value().clamp(-1.0, 1.0) * 10000.0) as i16;
 
-        // Record the position + visit policy.
+        // Record the position + root value + visit policy.
         let policy: Vec<(u16, u16)> = dist
             .iter()
             .map(|&(mv, n)| (chess::eval::policyvalue::move_index(mv) as u16, n as u16))
             .collect();
-        recorded.push((board.pack().bytes, policy));
+        recorded.push((board.pack().bytes, qi, policy));
 
         let stm_white = board.side_to_move() == chess::Color::White;
 
@@ -179,9 +182,10 @@ fn play(mcts: &mut Mcts<Arc<PolicyValueNet>>, mut rng: u64, sims: u32, out: &mut
         ply += 1;
     }
 
-    for (packed, policy) in &recorded {
+    for (packed, qi, policy) in &recorded {
         out.extend_from_slice(packed);
         out.push(result as u8);
+        out.extend_from_slice(&qi.to_le_bytes());
         out.push(policy.len().min(255) as u8);
         for &(mi, n) in policy.iter().take(255) {
             out.extend_from_slice(&mi.to_le_bytes());

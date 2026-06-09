@@ -108,6 +108,14 @@ impl<G: Guide> Mcts<G> {
         self.c_puct = c;
     }
 
+    /// The root's mean backed-up value (side-to-move) from the last search. This
+    /// `q_root` is a *search-improved* value estimate that is informative even on
+    /// drawn games (unlike the binary outcome), so it is the key value-training
+    /// target past the decisiveness wall (FINDINGS §5b).
+    pub fn last_root_value(&self) -> f32 {
+        self.nodes.first().map(|n| n.q()).unwrap_or(0.0)
+    }
+
     /// Search from `root` for `sims` simulations; returns the most-visited move
     /// and the full visit distribution (the improved policy, for training).
     pub fn search(&mut self, root: &Board, sims: u32) -> (Move, Vec<(Move, u32)>) {
