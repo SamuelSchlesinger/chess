@@ -69,7 +69,7 @@ mod zobrist_table;
 
 pub use bitboard::Bitboard;
 pub use board::{Board, NullUndo, Undo};
-pub use eval::{Evaluator, HandcraftedEval, Nnue, NnueEval};
+pub use eval::{Evaluator, HandcraftedEval, Nnue, NnueEval, PolicyValueNet};
 pub use fen::FenError;
 pub use game::{DrawReason, Game, Outcome};
 pub use mcts::Mcts;

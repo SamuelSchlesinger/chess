@@ -14,7 +14,7 @@
 //!   cargo run --release --bin play-match -- --games 200 --nodes-a 5000 \
 //!       --nodes-b 5000 --net-a nets/v1.nnue --random-plies 8 --seed 1
 
-use chess::{Board, Engine, Game, HandcraftedEval, Limits, Mcts, Move, NnueEval, Outcome};
+use chess::{Board, Engine, Game, HandcraftedEval, Limits, Mcts, Move, NnueEval, Outcome, PolicyValueNet};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -97,15 +97,27 @@ impl Drop for ExternalEngine {
     }
 }
 
-fn make_player(engine: Option<&str>, net: Option<&str>, mcts_sims: Option<u32>, nodes: u64) -> Player {
+fn make_player(
+    engine: Option<&str>,
+    net: Option<&str>,
+    az: Option<&str>,
+    mcts_sims: Option<u32>,
+    nodes: u64,
+) -> Player {
     let limits = Limits::nodes(nodes);
+    let sims_az = mcts_sims.unwrap_or(400);
+    if let Some(path) = az {
+        // Policy+value MCTS (the AlphaZero arm).
+        let mut m = Mcts::new(PolicyValueNet::load(path).unwrap_or_else(|e| panic!("load {path}: {e}")));
+        return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims_az).0);
+    }
     if let Some(sims) = mcts_sims {
         // PUCT MCTS (value-only spike) over the chosen evaluator.
         if let Some(path) = net {
-            let mut m = Mcts::new(NnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}")));
+            let mut m = Mcts::value(NnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}")));
             return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims).0);
         }
-        let mut m = Mcts::new(HandcraftedEval::new());
+        let mut m = Mcts::value(HandcraftedEval::new());
         return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims).0);
     }
     if let Some(path) = engine {
@@ -228,8 +240,8 @@ fn random_opening(plies: u32, mut rng: u64) -> Vec<Move> {
 
 fn main() {
     let cfg = parse_args();
-    let label_a = label(&cfg.engine_a, &cfg.net_a, cfg.mcts_a);
-    let label_b = label(&cfg.engine_b, &cfg.net_b, cfg.mcts_b);
+    let label_a = cfg.az_a.clone().map(|p| format!("AZ[{p}]")).unwrap_or_else(|| label(&cfg.engine_a, &cfg.net_a, cfg.mcts_a));
+    let label_b = cfg.az_b.clone().map(|p| format!("AZ[{p}]")).unwrap_or_else(|| label(&cfg.engine_b, &cfg.net_b, cfg.mcts_b));
     let budget = |mcts: Option<u32>, nodes: u64| match mcts {
         Some(s) => format!("{s} sims"),
         None => format!("{nodes} nodes"),
@@ -244,8 +256,8 @@ fn main() {
         cfg.random_plies,
     );
 
-    let mut a = make_player(cfg.engine_a.as_deref(), cfg.net_a.as_deref(), cfg.mcts_a, cfg.nodes_a);
-    let mut b = make_player(cfg.engine_b.as_deref(), cfg.net_b.as_deref(), cfg.mcts_b, cfg.nodes_b);
+    let mut a = make_player(cfg.engine_a.as_deref(), cfg.net_a.as_deref(), cfg.az_a.as_deref(), cfg.mcts_a, cfg.nodes_a);
+    let mut b = make_player(cfg.engine_b.as_deref(), cfg.net_b.as_deref(), cfg.az_b.as_deref(), cfg.mcts_b, cfg.nodes_b);
 
     let (mut w, mut d, mut l) = (0u32, 0u32, 0u32);
     let start = std::time::Instant::now();
@@ -329,6 +341,8 @@ struct Config {
     engine_b: Option<String>,
     mcts_a: Option<u32>,
     mcts_b: Option<u32>,
+    az_a: Option<String>,
+    az_b: Option<String>,
     random_plies: u32,
     seed: u64,
 }
@@ -344,6 +358,8 @@ fn parse_args() -> Config {
         engine_b: None,
         mcts_a: None,
         mcts_b: None,
+        az_a: None,
+        az_b: None,
         random_plies: 8,
         seed: 1,
     };
@@ -361,6 +377,8 @@ fn parse_args() -> Config {
             "--engine-b" => cfg.engine_b = Some(v.clone()),
             "--mcts-a" => cfg.mcts_a = v.parse().ok(),
             "--mcts-b" => cfg.mcts_b = v.parse().ok(),
+            "--az-a" => cfg.az_a = Some(v.clone()),
+            "--az-b" => cfg.az_b = Some(v.clone()),
             "--random-plies" => cfg.random_plies = v.parse().unwrap_or(cfg.random_plies),
             "--seed" => cfg.seed = v.parse().unwrap_or(cfg.seed),
             _ => {

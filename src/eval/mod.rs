@@ -9,10 +9,12 @@
 
 pub mod handcrafted;
 pub mod nnue;
+pub mod policyvalue;
 mod pesto_tables;
 
 pub use handcrafted::HandcraftedEval;
 pub use nnue::{Nnue, NnueEval};
+pub use policyvalue::PolicyValueNet;
 
 use crate::board::Board;
 use crate::moves::Move;
