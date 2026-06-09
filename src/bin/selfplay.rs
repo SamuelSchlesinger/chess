@@ -18,6 +18,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const MAX_PLIES: u32 = 240;
 const TEMP_PLIES: u32 = 24; // sample (explore) before this ply, argmax after
+const DIR_ALPHA: f32 = 0.3; // AlphaZero root Dirichlet noise (chess) — decisiveness
+const DIR_EPS: f32 = 0.25;
 const ADJ_PLIES: u32 = 6;
 const ADJ_VALUE: f32 = 0.92; // |MCTS root value| above this for ADJ_PLIES -> adjudicate
 
@@ -129,7 +131,11 @@ fn play(mcts: &mut Mcts<Arc<PolicyValueNet>>, mut rng: u64, sims: u32, out: &mut
         }
 
         let board = game.board().clone();
-        let (_best, dist) = mcts.search(&board, sims);
+        // Per-move seed for root Dirichlet noise (advance the game RNG).
+        rng ^= rng << 13;
+        rng ^= rng >> 7;
+        rng ^= rng << 17;
+        let (_best, dist) = mcts.search_noisy(&board, sims, DIR_ALPHA, DIR_EPS, rng);
         let total: u32 = dist.iter().map(|&(_, n)| n).sum();
         if total == 0 {
             break;

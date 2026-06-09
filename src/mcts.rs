@@ -111,8 +111,47 @@ impl<G: Guide> Mcts<G> {
     /// Search from `root` for `sims` simulations; returns the most-visited move
     /// and the full visit distribution (the improved policy, for training).
     pub fn search(&mut self, root: &Board, sims: u32) -> (Move, Vec<(Move, u32)>) {
+        self.search_inner(root, sims, 0.0, 0.0, 0)
+    }
+
+    /// Self-play search with **root Dirichlet exploration noise** (AlphaZero):
+    /// the root priors become `(1-eps)·p + eps·Dir(alpha)`, which diversifies the
+    /// opening and forces imbalanced — i.e. *decisive* — games. Without this,
+    /// self-play between two copies of one net is ~93% draws and the game-outcome
+    /// value target carries no signal (the decisiveness wall, FINDINGS §5b).
+    pub fn search_noisy(
+        &mut self,
+        root: &Board,
+        sims: u32,
+        alpha: f32,
+        eps: f32,
+        seed: u64,
+    ) -> (Move, Vec<(Move, u32)>) {
+        self.search_inner(root, sims, alpha, eps, seed)
+    }
+
+    fn search_inner(
+        &mut self,
+        root: &Board,
+        sims: u32,
+        alpha: f32,
+        eps: f32,
+        seed: u64,
+    ) -> (Move, Vec<(Move, u32)>) {
         self.nodes.clear();
         self.nodes.push(Node::new(Move::NONE, 1.0));
+        if eps > 0.0 {
+            // Expand the root up front so we can perturb its child priors.
+            let _ = self.expand_and_eval(0, root);
+            let (cs, nc) = (self.nodes[0].first_child, self.nodes[0].n_children);
+            if nc > 0 {
+                let noise = dirichlet(nc as usize, alpha, seed);
+                for (k, c) in (cs..cs + nc).enumerate() {
+                    let p = self.nodes[c as usize].prior;
+                    self.nodes[c as usize].prior = (1.0 - eps) * p + eps * noise[k];
+                }
+            }
+        }
         for _ in 0..sims {
             self.simulate(root);
         }
@@ -206,6 +245,60 @@ fn cp_to_value(cp: i32) -> f32 {
     2.0 / (1.0 + (-(cp as f32) / 400.0).exp()) - 1.0
 }
 
+// --- Dirichlet noise (zero-dep): Dir(alpha) = normalized i.i.d. Gamma(alpha). ---
+
+#[inline]
+fn next_u64(s: &mut u64) -> u64 {
+    *s ^= *s << 13;
+    *s ^= *s >> 7;
+    *s ^= *s << 17;
+    *s
+}
+#[inline]
+fn uniform(s: &mut u64) -> f32 {
+    // (0,1): keep it strictly positive so ln() is finite.
+    ((next_u64(s) >> 40) as f32 + 1.0) / (((1u64 << 24) + 1) as f32)
+}
+#[inline]
+fn normal(s: &mut u64) -> f32 {
+    // Box–Muller.
+    let u1 = uniform(s);
+    let u2 = uniform(s);
+    (-2.0 * u1.ln()).sqrt() * (std::f32::consts::TAU * u2).cos()
+}
+/// Marsaglia–Tsang Gamma(alpha, 1) sampler (with the alpha<1 boost).
+fn gamma(alpha: f32, s: &mut u64) -> f32 {
+    if alpha < 1.0 {
+        let g = gamma(alpha + 1.0, s);
+        return g * uniform(s).powf(1.0 / alpha);
+    }
+    let d = alpha - 1.0 / 3.0;
+    let c = 1.0 / (9.0 * d).sqrt();
+    loop {
+        let x = normal(s);
+        let v = (1.0 + c * x).powi(3);
+        if v <= 0.0 {
+            continue;
+        }
+        let u = uniform(s);
+        if u < 1.0 - 0.0331 * x * x * x * x {
+            return d * v;
+        }
+        if u.ln() < 0.5 * x * x + d * (1.0 - v + v.ln()) {
+            return d * v;
+        }
+    }
+}
+fn dirichlet(n: usize, alpha: f32, seed: u64) -> Vec<f32> {
+    let mut s = seed | 1;
+    let g: Vec<f32> = (0..n).map(|_| gamma(alpha, &mut s)).collect();
+    let sum: f32 = g.iter().sum();
+    if sum <= 0.0 {
+        return vec![1.0 / n as f32; n];
+    }
+    g.into_iter().map(|x| x / sum).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +324,26 @@ mod tests {
             assert!(board.legal_moves().contains(best));
             assert!(dist.iter().map(|&(_, n)| n).sum::<u32>() > 0);
         }
+    }
+
+    #[test]
+    fn dirichlet_is_a_distribution() {
+        for (n, a) in [(20usize, 0.3f32), (1, 0.3), (40, 0.15)] {
+            let d = dirichlet(n, a, 12345);
+            assert_eq!(d.len(), n);
+            assert!(d.iter().all(|&x| x >= 0.0 && x.is_finite()));
+            assert!((d.iter().sum::<f32>() - 1.0).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn noisy_search_returns_legal_full_visits() {
+        let board = Board::startpos();
+        let net = PolicyValueNet::random(5);
+        let mut mcts = Mcts::new(net);
+        let (best, dist) = mcts.search_noisy(&board, 400, 0.3, 0.25, 999);
+        assert!(board.legal_moves().contains(best));
+        assert_eq!(dist.iter().map(|&(_, n)| n).sum::<u32>(), 400);
     }
 
     #[test]

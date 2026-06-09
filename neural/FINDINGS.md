@@ -166,6 +166,50 @@ what is binding (value ceiling), what is not (policy/target depth), and what
 compounds (search × value) — so the remaining work is a known scaling program,
 not a search for an idea.
 
+### 5b. The decisiveness wall: outcome-grounded value needs decisive games
+
+We then pulled the lever §5a named: **unfreeze the value** and train it on game
+outcomes (blended with a fixed SF-value anchor for stability, target =
+λ·z + (1−λ)·v_anchor), sweeping λ ∈ {0.3, 0.5, 0.7}, measured vs the frozen-value
+baseline at 256 and 512 sims:
+
+```
+  λ=0.3:  @256 −0   @512 −7      up-queen value +0.589
+  λ=0.5:  @256 −21  @512 −7      up-queen value +0.441
+  λ=0.7:  @256 −0   @512 −7      up-queen value +0.308
+```
+
+No gain — and the value **compressed toward zero** as λ rose. The cause, measured
+directly on the self-play data:
+
+```
+  self-play outcome distribution (azw_gen1 @512 sims, 75,710 positions):
+      draw  92.8%   white win 2.7%   black win 4.5%   → decisive 7.2%
+```
+
+The outcome z is 0 for **93%** of positions, so blending toward it injects almost
+no information and merely shrinks the SF-distilled value (drawish-collapse). This
+is the **second bootstrap wall**, distinct from §4's:
+
+- §4 (random → meaningful): fixed by distilling the value. ✓
+- §5b (drawish → decisive): a value can only learn from outcomes if games are
+  *decided*. Two equal strong players draw; decisiveness must come from
+  **exploration** (root Dirichlet noise, opening temperature, opponent
+  diversity) and **search deep enough to convert** — and then it must be produced
+  at **volume**. On the M4 that volume is infeasible; it is the canonical reason
+  AlphaZero needed large-scale self-play.
+
+The corrected causal chain to exceeding Stockfish:
+
+> random → (distill value) → meaningful but **drawish** → (exploration + deep
+> search at scale → decisive games) → outcome-grounded value with no ceiling →
+> (× search amplification, +64/doubling) → past the teacher.
+
+The missing ingredient on *any* hardware is **decisiveness via exploration**
+(AlphaZero's root Dirichlet noise + temperature — which our self-play lacks); the
+missing ingredient *here specifically* is the **compute** to generate decisive
+games at volume. The first is a code change (next); the second is the 3080.
+
 ## 6. The thesis: distill the value, RL the policy
 
 Neither arm alone reaches the goal:

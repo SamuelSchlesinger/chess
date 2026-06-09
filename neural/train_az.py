@@ -142,7 +142,13 @@ def main():
     ap.add_argument("--warm", default=None, help="warm-start .azn to continue from")
     ap.add_argument("--freeze-value", action="store_true",
                     help="train only the policy head (preserve the warm value)")
+    ap.add_argument("--anchor", default=None,
+                    help=".azn whose value regularizes the target (defaults to --warm)")
+    ap.add_argument("--value-blend", type=float, default=None,
+                    help="UNFREEZE value: target = blend*outcome + (1-blend)*anchor_value")
     args = ap.parse_args()
+    assert not (args.value_blend is not None and args.freeze_value), \
+        "--value-blend trains the value; incompatible with --freeze-value"
 
     t0 = time.time()
     feats, vals, pidx, pp = load(args.records, args.max_rows)
@@ -154,7 +160,28 @@ def main():
     for i, f in enumerate(feats):
         F[i, : min(len(f), MAX_FEAT)] = f[:MAX_FEAT]
     F = mx.array(F)
-    V = mx.array(np.array(vals, dtype=np.float32))
+    z = np.array(vals, dtype=np.float32)  # game outcome, side-to-move
+    V = mx.array(z)
+
+    # Outcome-grounded value training with anchor regularization. The self-play
+    # outcome z has no teacher ceiling (it is ground truth), but early-game
+    # outcomes are high-variance and drawish (~0), which would erode the
+    # SF-distilled value. Blending toward a FIXED anchor's value keeps the
+    # material/positional sense while injecting the (no-ceiling) outcome signal:
+    #   target = blend * z  +  (1 - blend) * anchor_value(position)
+    if args.value_blend is not None:
+        anchor_path = args.anchor or args.warm
+        assert anchor_path, "--value-blend needs --anchor (or --warm) for the value anchor"
+        anc = Net(); mx.eval(anc.parameters()); load_azn(anc, anchor_path)
+        chunks = []
+        for i in range(0, n, 8192):
+            av, _ = anc(F[i : i + 8192])
+            chunks.append(np.array(av))
+        v_anchor = np.concatenate(chunks).astype(np.float32)
+        lam = args.value_blend
+        V = mx.array((lam * z + (1.0 - lam) * v_anchor).astype(np.float32))
+        print(f"value target = {lam:.2f}*outcome + {1-lam:.2f}*anchor[{anchor_path}]"
+              f"  (anchor mean |v|={np.abs(v_anchor).mean():.3f})")
 
     net = Net()
     mx.eval(net.parameters())
