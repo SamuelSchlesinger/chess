@@ -306,7 +306,8 @@ impl Board {
         let king_targets = attacks::king_attacks(king) & !us_bb & !danger;
         self.add_split(king, king_targets, them_bb, list);
 
-        let checkers = self.attackers_to(king, occ) & them_bb;
+        // Checkers (knight + pawn + slider) and pinned pieces in one pass.
+        let (checkers, pinned) = self.king_threats(king, us, them, occ);
         // Double check: only the king may move.
         if checkers.count() >= 2 {
             return;
@@ -316,8 +317,6 @@ impl Board {
         } else {
             Bitboard::FULL
         };
-
-        let pinned = self.compute_pins(king, us, them, occ);
 
         // Knights — a pinned knight can never move legally.
         let mut knights = self.pieces_colored(PieceType::Knight, us) & !pinned;
@@ -396,23 +395,43 @@ impl Board {
         span
     }
 
-    /// Bitboard of our pieces pinned against our king.
-    fn compute_pins(&self, king: Square, us: Color, them: Color, occ: Bitboard) -> Bitboard {
+    /// Checkers giving check to our king AND our pinned pieces, in a single
+    /// sniper pass. Non-slider checks (knight, pawn) are detected directly; for
+    /// each enemy slider aligned with the king on an empty board, the pieces
+    /// strictly between it and the king decide: none → it is a checking slider;
+    /// exactly one of ours → that piece is pinned.
+    ///
+    /// This computes the king's empty-board rook/bishop rays just once,
+    /// replacing the separate `attackers_to` (full-occ) and pin (empty-occ)
+    /// slider lookups the generator used to do.
+    fn king_threats(
+        &self,
+        king: Square,
+        us: Color,
+        them: Color,
+        occ: Bitboard,
+    ) -> (Bitboard, Bitboard) {
         let us_bb = self.color_bb(us);
         let them_bb = self.color_bb(them);
+
+        let mut checkers = (attacks::knight_attacks(king) & self.pieces_colored(PieceType::Knight, them))
+            | (attacks::pawn_attacks(us, king) & self.pieces_colored(PieceType::Pawn, them));
+
         let rq = (self.pieces(PieceType::Rook) | self.pieces(PieceType::Queen)) & them_bb;
         let bq = (self.pieces(PieceType::Bishop) | self.pieces(PieceType::Queen)) & them_bb;
-        // Snipers: enemy sliders that would attack the king on an empty board.
         let mut snipers = (attacks::rook_attacks(king, Bitboard::EMPTY) & rq)
             | (attacks::bishop_attacks(king, Bitboard::EMPTY) & bq);
+
         let mut pinned = Bitboard::EMPTY;
         while let Some(s) = snipers.pop_lsb() {
             let blockers = attacks::between(king, s) & occ;
-            if blockers.is_single() && (blockers & us_bb).any() {
+            if blockers.is_empty() {
+                checkers |= Bitboard::from_square(s);
+            } else if blockers.is_single() && (blockers & us_bb).any() {
                 pinned |= blockers;
             }
         }
-        pinned
+        (checkers, pinned)
     }
 
     #[allow(clippy::too_many_arguments)]
