@@ -111,6 +111,25 @@ fn robustness_legal_best_move_over_many_positions() {
     assert!(checked > 100, "checked only {checked}");
 }
 
+#[test]
+fn self_play_reaches_a_result() {
+    // The engine plays both sides at a shallow depth: every move must be legal,
+    // and the game must terminate (a result, or the ply cap) without panicking.
+    use chess::Outcome;
+    let mut game = Game::new();
+    let mut engine = Engine::new();
+    let mut plies = 0;
+    while game.outcome() == Outcome::Ongoing && plies < 240 {
+        let a = engine.analyze(game.board(), &Limits::depth(4));
+        let legal = game.board().legal_moves();
+        assert!(legal.contains(a.best_move), "illegal move at ply {plies}");
+        game.push(a.best_move);
+        plies += 1;
+    }
+    eprintln!("self-play ended after {plies} plies: {:?}", game.outcome());
+    assert!(plies > 4, "game ended suspiciously fast");
+}
+
 /// Parse an EPD line into (fen, list-of-best-move-SANs).
 fn parse_epd(line: &str) -> Option<(String, Vec<String>)> {
     let line = line.trim();
