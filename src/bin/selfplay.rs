@@ -83,7 +83,11 @@ fn main() {
         let (cfg, net, next, positions, done) =
             (cfg.clone(), net.clone(), next.clone(), positions.clone(), done.clone());
         handles.push(std::thread::spawn(move || match &cfg.eval_server {
-            Some(sock) => {
+            Some(socks) => {
+                // Comma-separated sockets = multiple server processes (one
+                // Python process saturates one GIL); shard threads round-robin.
+                let list: Vec<&str> = socks.split(',').collect();
+                let sock = list[t % list.len()];
                 let guide = RemoteGuide::connect(sock)
                     .unwrap_or_else(|e| panic!("connect eval server {sock}: {e}"));
                 worker(Mcts::new(guide), t, leaves, &cfg, &next, &positions, &done, start);

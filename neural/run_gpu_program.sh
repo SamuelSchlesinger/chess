@@ -40,36 +40,44 @@ SP_THREADS=${SP_THREADS:-${4:-256}}
 BATCH_LEAVES=${BATCH_LEAVES:-16}
 MAX_BATCH=${MAX_BATCH:-4096}
 MAX_WAIT_MS=${MAX_WAIT_MS:-1.0}
-printf 'BATCH_EVAL=%s\nSP_THREADS=%s\nBATCH_LEAVES=%s\nMAX_BATCH=%s\nMAX_WAIT_MS=%s\n' \
-  "$BATCH_EVAL" "$SP_THREADS" "$BATCH_LEAVES" "$MAX_BATCH" "$MAX_WAIT_MS" > "$CFG"
+NUM_SERVERS=${NUM_SERVERS:-1}   # one Python server saturates one GIL (~150k evals/s)
+printf 'BATCH_EVAL=%s\nSP_THREADS=%s\nBATCH_LEAVES=%s\nMAX_BATCH=%s\nMAX_WAIT_MS=%s\nNUM_SERVERS=%s\n' \
+  "$BATCH_EVAL" "$SP_THREADS" "$BATCH_LEAVES" "$MAX_BATCH" "$MAX_WAIT_MS" "$NUM_SERVERS" > "$CFG"
 SOCK="/tmp/chess_eval_$$.sock"
-SERVER_PID=""
+SERVER_PIDS=""
+SOCKS=""
 # Each in-flight game costs ~3 fds (2 socket ends + a shard file); the default
 # soft limit of 1024 dies at SP_THREADS=512 with a flaky startup panic.
 ulimit -n 65536 2>/dev/null || true
 
-start_server() { # $1 = net to serve
-  $PY neural/eval_server.py --net "$1" --socket "$SOCK" \
-      --max-batch "$MAX_BATCH" --max-wait-ms "$MAX_WAIT_MS" \
-      >> logs/eval_server.log 2>&1 &
-  SERVER_PID=$!
-  for _ in $(seq 1 240); do
-    [ -S "$SOCK" ] && break
-    if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
-    sleep 0.5
+start_server() { # $1 = net to serve; starts NUM_SERVERS processes
+  SERVER_PIDS=""; SOCKS=""
+  for i in $(seq 1 "$NUM_SERVERS"); do
+    $PY neural/eval_server.py --net "$1" --socket "$SOCK.$i" \
+        --max-batch "$MAX_BATCH" --max-wait-ms "$MAX_WAIT_MS" \
+        >> logs/eval_server.log 2>&1 &
+    SERVER_PIDS="$SERVER_PIDS $!"
+    SOCKS="$SOCKS,$SOCK.$i"
   done
-  if [ ! -S "$SOCK" ]; then
-    say "FATAL: eval server did not come up; last log lines:"
-    tail -5 logs/eval_server.log | while IFS= read -r l; do say "  $l"; done
-    status "FATAL: eval server"; exit 1
-  fi
+  SOCKS=${SOCKS#,}
+  for i in $(seq 1 "$NUM_SERVERS"); do
+    for _ in $(seq 1 240); do
+      [ -S "$SOCK.$i" ] && break
+      sleep 0.5
+    done
+    if [ ! -S "$SOCK.$i" ]; then
+      say "FATAL: eval server $i did not come up; last log lines:"
+      tail -5 logs/eval_server.log | while IFS= read -r l; do say "  $l"; done
+      status "FATAL: eval server"; exit 1
+    fi
+  done
 }
 stop_server() {
-  if [ -n "$SERVER_PID" ]; then
-    kill "$SERVER_PID" 2>/dev/null
-    wait "$SERVER_PID" 2>/dev/null
-  fi
-  SERVER_PID=""; rm -f "$SOCK"
+  for p in $SERVER_PIDS; do
+    kill "$p" 2>/dev/null
+    wait "$p" 2>/dev/null
+  done
+  SERVER_PIDS=""; rm -f "$SOCK".*
 }
 trap 'rc=$?; stop_server; say "EXITED rc=$rc"' EXIT
 
@@ -123,7 +131,7 @@ for g in $(seq 1 "$NGEN"); do
     start_server "$BEST"
     ./target/release/selfplay --games "$GAMES" --out "$data" --net "$BEST" \
         --sims "$SIMS" --threads "$SP_THREADS" --batch-leaves "$BATCH_LEAVES" \
-        --eval-server "$SOCK" --seed "$g" 2>&1 | tail -1
+        --eval-server "$SOCKS" --seed "$g" 2>&1 | tail -1
     sp_rc=$?   # pipefail: reflects selfplay, not tail
     stop_server
   else
