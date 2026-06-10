@@ -331,6 +331,36 @@ The deliverable of *this* environment is therefore: the validated machine + the
 principled map of exactly where the ceiling is and how to pass it. The crossing
 itself is GPU-bound and scheduled for the 3080.
 
+## 9. The hybrid leg (2026-06-09): RL value × classical search
+
+Strategy assessment concluded the strongest *engine* buildable on this hardware
+is αβ + the best available net — so two builds and one decisive negative result:
+
+- **Quantized incremental NNUE shipped** (task #18): i16 weights (QA=1024,
+  QB=4096), i32 accumulator stack updated on `on_make`/`on_unmake` (hooks fire
+  on the **pre-move** board, which fully determines the feature diff; integer
+  arithmetic makes incremental ≡ rebuild bit-identically — tested over random
+  playouts with unwinding). **1.75× engine speed at identical nodes** (12.13s →
+  6.93s, same seeded match) ⇒ ≈ +50–80 Elo at time parity from depth alone.
+- **The AZ value head does NOT transfer to αβ leaf eval** (`AzValueEval`,
+  inverse-logistic to cp): 3080-gen1's value — which probes correctly, works in
+  MCTS, and just gained +74 Elo there — scores **19.2% vs PeSTO** (−250 Elo
+  @2000 nodes) and **~20% vs the distilled NNUE** (≈ −240, 80/200 games @5000
+  nodes) inside the SAME search. The same function is good in MCTS and bad in αβ.
+- **Why (the principled account):** (a) *target-scale inductive bias* — the AZ
+  value trains on win-prob, which tanh-saturates: positions at v=0.97 vs 0.98
+  differ by ~200cp after inversion, so αβ's hard max gets noise exactly where it
+  must rank winning continuations; MCTS only *averages* values, so it tolerates
+  the compression. (b) *distribution* — αβ evaluates quiescence leaves reached
+  through forcing lines, far off the self-play visit distribution; MCTS
+  evaluates on-distribution. The distilled NNUE regresses cp directly (full
+  dynamic range) and works. Lesson: **the value target's scale is part of the
+  architecture** — win-prob for search-as-averaging, centipawns for
+  search-as-max.
+- **Next experiment:** distill the *decisive self-play corpus* (root-q + outcome
+  labels, no SF involved) into the cp-scale NNUE architecture — keeps the
+  no-teacher-ceiling property while matching αβ's required dynamic range.
+
 ---
 *Measurements in this file are reproducible from the binaries in `src/bin/`
 (`gen-data`, `label-sf`, `selfplay`, `train-*`, `play-match`, `probe-az`) and the
