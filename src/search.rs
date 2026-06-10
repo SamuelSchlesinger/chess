@@ -418,8 +418,8 @@ impl<E: Evaluator> Engine<E> {
             && board.has_non_pawn_material(board.side_to_move())
         {
             let r = 2 + depth / 4;
-            let undo = board.make_null_move();
             self.eval.on_make(board, Move::NONE);
+            let undo = board.make_null_move();
             self.path.push(board.hash());
             let score = -self.negamax(board, depth - 1 - r, -beta, -beta + 1, ply + 1, false);
             self.path.pop();
@@ -453,8 +453,8 @@ impl<E: Evaluator> Engine<E> {
         for (i, &mv) in ordered[..n].iter().enumerate() {
             let is_quiet = !mv.is_capture() && !mv.is_promotion();
 
-            let undo = board.make_move(mv);
             self.eval.on_make(board, mv);
+            let undo = board.make_move(mv);
             self.path.push(board.hash());
 
             // Late-move reductions for late quiet moves.
@@ -567,8 +567,8 @@ impl<E: Evaluator> Engine<E> {
         scored[..count].sort_unstable_by_key(|x| core::cmp::Reverse(x.0));
 
         for &(_, mv) in &scored[..count] {
-            let undo = board.make_move(mv);
             self.eval.on_make(board, mv);
+            let undo = board.make_move(mv);
             let score = -self.quiescence(board, -beta, -alpha, ply + 1);
             board.unmake_move(mv, undo);
             self.eval.on_unmake(board, mv);

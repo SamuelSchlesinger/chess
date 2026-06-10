@@ -14,7 +14,7 @@ mod pesto_tables;
 
 pub use handcrafted::HandcraftedEval;
 pub use nnue::{Nnue, NnueEval};
-pub use policyvalue::PolicyValueNet;
+pub use policyvalue::{AzValueEval, PolicyValueNet};
 
 use crate::board::Board;
 use crate::moves::Move;
@@ -37,15 +37,17 @@ pub trait Evaluator {
     /// Evaluate `board` from the side-to-move's perspective.
     fn evaluate(&mut self, board: &Board) -> i32;
 
-    /// Called by the search just after `board.make_move(mv)`. An incremental
-    /// (e.g. NNUE-accumulator) evaluator updates its state here; the default is
-    /// a no-op for from-scratch evaluators.
+    /// Called by the search just **before** `board.make_move(mv)` (so an
+    /// incremental NNUE accumulator can read the moved/captured pieces off the
+    /// pre-move board and push an updated accumulator). `Move::NONE` = null
+    /// move. The default is a no-op for from-scratch evaluators.
     #[inline]
     fn on_make(&mut self, board: &Board, mv: Move) {
         let _ = (board, mv);
     }
 
-    /// Called by the search just after `board.unmake_move(mv, undo)`.
+    /// Called by the search just after `board.unmake_move(mv, undo)` (the
+    /// board is back in the pre-move state); pops the accumulator.
     #[inline]
     fn on_unmake(&mut self, board: &Board, mv: Move) {
         let _ = (board, mv);

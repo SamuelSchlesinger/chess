@@ -234,6 +234,28 @@ impl PolicyValueNet {
     }
 }
 
+/// The AZ net's **value head** as an αβ [`Evaluator`] — the hybrid arm.
+///
+/// The self-play-trained value is the only label source with no teacher
+/// ceiling; classical alpha-beta is the most node-efficient search we have.
+/// This adapter converts the tanh win-estimate back to centipawns (the exact
+/// inverse of `mcts::cp_to_value`), so any RL value gain is convertible into
+/// engine strength at full search speed instead of MCTS sims.
+pub struct AzValueEval(pub PolicyValueNet);
+
+impl AzValueEval {
+    pub fn load(path: &str) -> Result<AzValueEval, String> {
+        PolicyValueNet::load(path).map(AzValueEval)
+    }
+}
+
+impl crate::eval::Evaluator for AzValueEval {
+    fn evaluate(&mut self, board: &Board) -> i32 {
+        let v = self.0.value(board).clamp(-0.9995, 0.9995);
+        (400.0 * ((1.0 + v) / (1.0 - v)).ln()) as i32
+    }
+}
+
 struct Reader<'a> {
     bytes: &'a [u8],
     pos: usize,

@@ -101,11 +101,21 @@ fn make_player(
     engine: Option<&str>,
     net: Option<&str>,
     az: Option<&str>,
+    az_eval: Option<&str>,
     mcts_sims: Option<u32>,
     nodes: u64,
 ) -> Player {
     let limits = Limits::nodes(nodes);
     let sims_az = mcts_sims.unwrap_or(400);
+    if let Some(path) = az_eval {
+        // The hybrid arm: alpha-beta search over the AZ net's value head.
+        let eval = chess::eval::AzValueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}"));
+        let mut engine = Engine::with_eval_and_tt(eval, 16);
+        return Box::new(move |board: &Board, hist: &[u64]| {
+            engine.set_history(hist);
+            engine.analyze(board, &limits).best_move
+        });
+    }
     if let Some(path) = az {
         // Policy+value MCTS (the AlphaZero arm).
         let mut m = Mcts::new(PolicyValueNet::load(path).unwrap_or_else(|e| panic!("load {path}: {e}")));
@@ -130,7 +140,8 @@ fn make_player(
             }
         })
     } else if let Some(path) = net {
-        let eval = NnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}"));
+        // Quantized incremental NNUE — the production inference path.
+        let eval = chess::eval::nnue::QNnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}"));
         let mut engine = Engine::with_eval_and_tt(eval, 16);
         Box::new(move |board: &Board, hist: &[u64]| {
             engine.set_history(hist);
@@ -240,8 +251,12 @@ fn random_opening(plies: u32, mut rng: u64) -> Vec<Move> {
 
 fn main() {
     let cfg = parse_args();
-    let label_a = cfg.az_a.clone().map(|p| format!("AZ[{p}]")).unwrap_or_else(|| label(&cfg.engine_a, &cfg.net_a, cfg.mcts_a));
-    let label_b = cfg.az_b.clone().map(|p| format!("AZ[{p}]")).unwrap_or_else(|| label(&cfg.engine_b, &cfg.net_b, cfg.mcts_b));
+    let label_a = cfg.az_eval_a.clone().map(|p| format!("AB[AZval:{p}]"))
+        .or_else(|| cfg.az_a.clone().map(|p| format!("AZ[{p}]")))
+        .unwrap_or_else(|| label(&cfg.engine_a, &cfg.net_a, cfg.mcts_a));
+    let label_b = cfg.az_eval_b.clone().map(|p| format!("AB[AZval:{p}]"))
+        .or_else(|| cfg.az_b.clone().map(|p| format!("AZ[{p}]")))
+        .unwrap_or_else(|| label(&cfg.engine_b, &cfg.net_b, cfg.mcts_b));
     let budget = |mcts: Option<u32>, nodes: u64| match mcts {
         Some(s) => format!("{s} sims"),
         None => format!("{nodes} nodes"),
@@ -256,8 +271,8 @@ fn main() {
         cfg.random_plies,
     );
 
-    let mut a = make_player(cfg.engine_a.as_deref(), cfg.net_a.as_deref(), cfg.az_a.as_deref(), cfg.mcts_a, cfg.nodes_a);
-    let mut b = make_player(cfg.engine_b.as_deref(), cfg.net_b.as_deref(), cfg.az_b.as_deref(), cfg.mcts_b, cfg.nodes_b);
+    let mut a = make_player(cfg.engine_a.as_deref(), cfg.net_a.as_deref(), cfg.az_a.as_deref(), cfg.az_eval_a.as_deref(), cfg.mcts_a, cfg.nodes_a);
+    let mut b = make_player(cfg.engine_b.as_deref(), cfg.net_b.as_deref(), cfg.az_b.as_deref(), cfg.az_eval_b.as_deref(), cfg.mcts_b, cfg.nodes_b);
 
     let (mut w, mut d, mut l) = (0u32, 0u32, 0u32);
     let start = std::time::Instant::now();
@@ -343,6 +358,8 @@ struct Config {
     mcts_b: Option<u32>,
     az_a: Option<String>,
     az_b: Option<String>,
+    az_eval_a: Option<String>,
+    az_eval_b: Option<String>,
     random_plies: u32,
     seed: u64,
 }
@@ -360,6 +377,8 @@ fn parse_args() -> Config {
         mcts_b: None,
         az_a: None,
         az_b: None,
+        az_eval_a: None,
+        az_eval_b: None,
         random_plies: 8,
         seed: 1,
     };
@@ -379,6 +398,8 @@ fn parse_args() -> Config {
             "--mcts-b" => cfg.mcts_b = v.parse().ok(),
             "--az-a" => cfg.az_a = Some(v.clone()),
             "--az-b" => cfg.az_b = Some(v.clone()),
+            "--az-eval-a" => cfg.az_eval_a = Some(v.clone()),
+            "--az-eval-b" => cfg.az_eval_b = Some(v.clone()),
             "--random-plies" => cfg.random_plies = v.parse().unwrap_or(cfg.random_plies),
             "--seed" => cfg.seed = v.parse().unwrap_or(cfg.seed),
             _ => {
