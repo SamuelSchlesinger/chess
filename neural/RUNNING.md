@@ -1,5 +1,29 @@
 # What is running, and how to resume (read this first after a restart)
 
+**PAUSED 2026-06-09 22:17** at the user's request. Nothing is running anywhere.
+State of the world at pause:
+
+- **3080 (`ssh samuel@desktop`, repo at `~/projects/games/chess`)**: program
+  stopped after **gen1 ACCEPT +74 Elo [+53,+96]** (decisive 37.6%); gen2
+  self-play was ~90% done and is NOT checkpointed (gens checkpoint atomically —
+  resume redoes gen2). Checkpoints intact: `nets/gpu_gen{0,1}.azn`,
+  `logs/program_state/{best.txt,gen1.done,config}`. Code+binary there are
+  current (incl. multi-server). **Resume:**
+  `BATCH_EVAL=1 SP_THREADS=512 NUM_SERVERS=4 BATCH_LEAVES=24 neural/launch_program.sh start 30 20000 800`
+  (NUM_SERVERS=4 is the untested-at-scale GIL fix — watch the first
+  `logs/eval_server.log` rates; single-server measured ~130–170k evals/s.)
+- **Mac**: M4 control run finished (gens 2–20 all rejected — the volume null
+  result). SF gauntlet watcher (`sfwatch` tmux) stopped; restart with
+  `tmux new-session -d -s sfwatch 'neural/sf_gauntlet.sh >> logs/sf_gauntlet.log 2>&1'`.
+- **Artifacts pulled to the Mac**: the 3080 gen1 corpus (20k games, 2.99M
+  positions, 37.6% decisive) at `data/gpu3080_g0/` (347 MB); nets at
+  `nets/remote/gpu3080_gen0.azn` + `nets/remote/gpu_gen1.azn` (the +74 net).
+- **Ladder baseline (3080 gen1 @800 sims)**: −363 vs SF@100, −449 @200,
+  −604 @400, saturated ~−800+ @equal 800.
+- **Next experiment queued (FINDINGS §9)**: distill `data/gpu3080_g0` (root-q +
+  outcome, cp-scale) into the NNUE architecture → A/B vs `nets/sf_v1.nnue`
+  inside αβ — RL data vs teacher data in our strongest engine, no SF labels.
+
 A long-running self-play RL program runs in a **tmux session named `chesstrain`**
 that is independent of the Claude Code session. You can **restart/upgrade the
 model freely** — training keeps going. A freshly-started (or upgraded) assistant
