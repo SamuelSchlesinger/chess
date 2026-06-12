@@ -120,6 +120,8 @@ pub struct Engine<E: Evaluator = HandcraftedEval> {
     stop: Arc<AtomicBool>,
     /// Position keys preceding the search root (for repetition detection).
     root_history: Vec<u64>,
+    /// Root moves excluded from this search (for MultiPV-style re-searches).
+    exclude_root: Vec<Move>,
 
     // Per-search scratch.
     nodes: u64,
@@ -154,6 +156,7 @@ impl<E: Evaluator> Engine<E> {
             data: SearchData::boxed(),
             stop: Arc::new(AtomicBool::new(false)),
             root_history: Vec::new(),
+            exclude_root: Vec::new(),
             nodes: 0,
             seldepth: 0,
             stopped: false,
@@ -198,8 +201,26 @@ impl<E: Evaluator> Engine<E> {
         &mut self,
         board: &Board,
         limits: &Limits,
+        on_info: impl FnMut(&SearchInfo),
+    ) -> Analysis {
+        self.analyze_excluding(board, limits, &[], on_info)
+    }
+
+    /// Analyze `board` with some root moves excluded from consideration.
+    ///
+    /// Calling repeatedly, each time excluding the best moves already found,
+    /// yields the 2nd-, 3rd-, ... best lines (MultiPV). While an exclusion is
+    /// active the root result is not stored in the transposition table, so
+    /// entries seen by later searches of the same position stay valid.
+    pub fn analyze_excluding(
+        &mut self,
+        board: &Board,
+        limits: &Limits,
+        exclude: &[Move],
         mut on_info: impl FnMut(&SearchInfo),
     ) -> Analysis {
+        self.exclude_root.clear();
+        self.exclude_root.extend_from_slice(exclude);
         self.prepare(board, limits);
         let mut root = board.clone();
 
@@ -209,6 +230,7 @@ impl<E: Evaluator> Engine<E> {
         let max_depth = limits.depth.unwrap_or(MAX_PLY as i32 - 2).min(MAX_PLY as i32 - 2);
 
         let mut prev_score = 0;
+        let mut completed_depth = 0;
         for depth in 1..=max_depth {
             let score = self.search_root(&mut root, depth, prev_score);
 
@@ -217,6 +239,7 @@ impl<E: Evaluator> Engine<E> {
                 break;
             }
 
+            completed_depth = depth;
             best_score = score;
             prev_score = score;
             last_pv = self.collect_pv();
@@ -239,10 +262,17 @@ impl<E: Evaluator> Engine<E> {
             }
         }
 
-        // Fallback: ensure we always return a legal move.
+        // Fallback: ensure we always return a legal move (preferring one that
+        // is not excluded).
         if best_move == Move::NONE {
             let moves = root.legal_moves();
-            if !moves.is_empty() {
+            for &mv in moves.iter() {
+                if !self.exclude_root.contains(&mv) {
+                    best_move = mv;
+                    break;
+                }
+            }
+            if best_move == Move::NONE && !moves.is_empty() {
                 best_move = moves[0];
             }
         }
@@ -251,16 +281,12 @@ impl<E: Evaluator> Engine<E> {
             best_move,
             ponder: last_pv.get(1).copied(),
             score: best_score,
-            depth: max_depth.min(self.completed_depth()),
+            depth: completed_depth,
             seldepth: self.seldepth,
             nodes: self.nodes,
             time_ms: self.start.elapsed().as_millis(),
             pv: last_pv,
         }
-    }
-
-    fn completed_depth(&self) -> i32 {
-        self.data.pv_len[0] as i32
     }
 
     fn prepare(&mut self, board: &Board, limits: &Limits) {
@@ -450,7 +476,11 @@ impl<E: Evaluator> Engine<E> {
         let mut best_move = Move::NONE;
         let mut bound = Bound::Upper;
 
-        for (i, &mv) in ordered[..n].iter().enumerate() {
+        let mut searched = 0usize;
+        for &mv in ordered[..n].iter() {
+            if is_root && !self.exclude_root.is_empty() && self.exclude_root.contains(&mv) {
+                continue;
+            }
             let is_quiet = !mv.is_capture() && !mv.is_promotion();
 
             self.eval.on_make(board, mv);
@@ -459,15 +489,15 @@ impl<E: Evaluator> Engine<E> {
 
             // Late-move reductions for late quiet moves.
             let mut reduction = 0;
-            if depth >= 3 && i >= 4 && is_quiet && !in_check {
-                reduction = lmr(depth, i);
+            if depth >= 3 && searched >= 4 && is_quiet && !in_check {
+                reduction = lmr(depth, searched);
                 if is_pv {
                     reduction = (reduction - 1).max(0);
                 }
             }
 
             let new_depth = depth - 1;
-            let score = if i == 0 {
+            let score = if searched == 0 {
                 -self.negamax(board, new_depth, -beta, -alpha, ply + 1, true)
             } else {
                 // Principal-variation search with a null window (+ LMR).
@@ -489,6 +519,7 @@ impl<E: Evaluator> Engine<E> {
             if self.stopped {
                 return 0;
             }
+            searched += 1;
 
             if score > best_score {
                 best_score = score;
@@ -509,8 +540,12 @@ impl<E: Evaluator> Engine<E> {
             }
         }
 
-        self.tt
-            .store(key, best_move, score_to_tt(best_score, ply), depth, bound);
+        // A root searched under an exclusion saw only a subset of the moves;
+        // storing its result would poison the entry for unrestricted searches.
+        if !is_root || self.exclude_root.is_empty() {
+            self.tt
+                .store(key, best_move, score_to_tt(best_score, ply), depth, bound);
+        }
         best_score
     }
 

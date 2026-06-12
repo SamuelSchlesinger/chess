@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chess-web — analysis</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='82' font-size='84'>&#9822;</text></svg>">
+</head>
+<body>
+
+<header>
+  <h1>&#9822; chess-web</h1>
+  <div class="toolbar">
+    <button id="btn-new" title="New game">New</button>
+    <button id="btn-flip" title="Flip board (f)">Flip</button>
+    <button id="btn-fen" title="Set up or copy a position">FEN</button>
+    <button id="btn-pgn" title="Import or export a game">PGN</button>
+  </div>
+  <div id="status"></div>
+</header>
+
+<main>
+  <div id="board-wrap">
+    <div id="evalbar" title="Evaluation (White's share)">
+      <span id="evalbar-num">0.0</span>
+      <div id="evalbar-white"></div>
+    </div>
+    <div id="board"></div>
+  </div>
+
+  <aside id="panel">
+    <section>
+      <div id="engine-head">
+        <button id="btn-engine" class="on" title="Toggle engine">On</button>
+        <select id="sel-engine" title="Which engine analyzes"></select>
+        <label>Lines
+          <select id="sel-multipv">
+            <option>1</option><option selected>3</option><option>5</option>
+          </select>
+        </label>
+        <span id="engine-stats"></span>
+      </div>
+      <div id="lines"><div class="placeholder">engine idle</div></div>
+    </section>
+
+    <section>
+      <div id="movelist"><span class="empty">No moves yet — drag a piece or paste a PGN.</span></div>
+      <div id="nav">
+        <button id="nav-start" title="Start (Home)">|&#9664;</button>
+        <button id="nav-back" title="Back (&#8592;)">&#9664;</button>
+        <button id="nav-fwd" title="Forward (&#8594;)">&#9654;</button>
+        <button id="nav-end" title="End (End)">&#9654;|</button>
+      </div>
+    </section>
+
+    <section>
+      <div id="analysis-head">
+        <button id="btn-analyze-game" title="Evaluate every position of the game">Analyze game</button>
+        <progress id="ana-progress" max="1" value="0" hidden></progress>
+      </div>
+      <canvas id="graph" width="640" height="170" hidden></canvas>
+      <div id="ana-summary"></div>
+    </section>
+  </aside>
+</main>
+
+<dialog id="dlg-fen">
+  <h3>Position (FEN)</h3>
+  <input type="text" id="fen-input" spellcheck="false" placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
+  <div class="row">
+    <button id="fen-load">Load position</button>
+    <button id="fen-copy">Copy current FEN</button>
+    <button id="fen-close">Close</button>
+  </div>
+  <div class="hint">Loading a FEN starts a fresh analysis line from that position.</div>
+</dialog>
+
+<dialog id="dlg-pgn">
+  <h3>Game (PGN)</h3>
+  <textarea id="pgn-input" spellcheck="false" placeholder="[Event &quot;...&quot;]&#10;&#10;1. e4 e5 2. Nf3 ..."></textarea>
+  <div class="row">
+    <button id="pgn-load">Import game</button>
+    <button id="pgn-copy">Copy current game</button>
+    <button id="pgn-close">Close</button>
+  </div>
+  <div class="hint">Import reads the first game; comments and variations are stripped.</div>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>

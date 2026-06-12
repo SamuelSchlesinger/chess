@@ -105,6 +105,33 @@ cargo run --release --bin chess-uci
 cargo run --release --example analyze "<FEN>" 2000   # one-shot analysis
 ```
 
+## Analysis GUI
+
+A browser-based analysis board, still with zero dependencies — a hand-rolled
+HTTP/1.1 + Server-Sent-Events server (`src/bin/chess-web/`) drives the library
+engine in-process and serves an embedded single-page frontend:
+
+```sh
+cargo run --release --bin chess-web        # open http://127.0.0.1:8000/
+cargo run --release --bin chess-web -- --port 9090 --hash 256 \
+    --nnue nets/v2.nnue --uci "lc0=lc0 --threads=2"
+```
+
+- Click or drag to move (legal-move hints, promotion picker, check highlight);
+  arrow keys / move list to navigate; flip board.
+- Live engine analysis of the viewed position with an eval bar and up to 5
+  lines — MultiPV is emulated by re-searching with the better root moves
+  excluded ([`Engine::analyze_excluding`]), sharing the transposition table.
+- **Multiple engines**, selectable in the UI: the built-in search with PeSTO
+  and/or trained NNUE nets (`--nnue`), plus any external UCI engine as a
+  subprocess (`--uci`, with native MultiPV); a `stockfish` on PATH is
+  registered automatically.
+- **Analyze game**: evaluates every position of the line with the chosen
+  engine, draws the eval graph, and annotates inaccuracies / mistakes /
+  blunders (`?!`, `?`, `??`).
+- FEN and PGN import/export (comments, variations, and NAGs are stripped on
+  import).
+
 [`Evaluator`]: crate::Evaluator
 
 ## Benchmarks

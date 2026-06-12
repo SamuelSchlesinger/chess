@@ -208,3 +208,49 @@ fn wac_full_solve_rate() {
     eprintln!("WAC full: solved {solved}/{total} at 300ms/move");
     assert!(solved * 100 >= total * 85, "WAC solve rate {solved}/{total}");
 }
+
+#[test]
+fn root_exclusion_yields_distinct_lines() {
+    // MultiPV emulation: successive searches excluding the best moves found so
+    // far must produce distinct, legal best moves.
+    let mut engine = Engine::new();
+    let board = Board::startpos();
+    let limits = Limits::depth(7);
+
+    let mut excluded = Vec::new();
+    for _ in 0..3 {
+        let a = engine.analyze_excluding(&board, &limits, &excluded, |_| {});
+        assert!(
+            board.legal_moves().contains(a.best_move),
+            "illegal best move {}",
+            a.best_move
+        );
+        assert!(
+            !excluded.contains(&a.best_move),
+            "excluded move {} returned as best",
+            a.best_move
+        );
+        excluded.push(a.best_move);
+    }
+}
+
+#[test]
+fn root_exclusion_does_not_poison_later_searches() {
+    // Search a mate-in-one, search it again with the mating move excluded, then
+    // search unrestricted once more: the mate must still be found (the excluded
+    // root result must not have been stored in the transposition table).
+    let mut engine = Engine::new();
+    let board = Board::from_fen("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1").unwrap();
+    let limits = Limits::depth(6);
+
+    let a1 = engine.analyze(&board, &limits);
+    assert_eq!(board.san(a1.best_move), "Ra8#");
+
+    let a2 = engine.analyze_excluding(&board, &limits, &[a1.best_move], |_| {});
+    assert_ne!(a2.best_move, a1.best_move);
+    assert_ne!(mate_in_moves(a2.score), Some(1), "mate-in-1 with Ra8 excluded");
+
+    let a3 = engine.analyze(&board, &limits);
+    assert_eq!(board.san(a3.best_move), "Ra8#", "TT poisoned by exclusion");
+    assert_eq!(mate_in_moves(a3.score), Some(1));
+}
