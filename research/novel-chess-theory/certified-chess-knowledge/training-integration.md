@@ -85,10 +85,13 @@ Tablebase-backed records use `pinned-oracle` and must additionally name the
 metric, table family, endpoint or file digest, and clock semantics. Assurance
 labels are not silently promoted when a nearby generic theorem exists.
 
-The runtime review row is keyed by `(user, item id, content version)` and holds
-only observations such as due time, attempts, response, latency, hints, lapses,
-and the scheduler's current stability estimate.  Content changes create a new
-version rather than silently inheriting mastery of a different question.
+The runtime review row is keyed by
+`(user, item id, semantic content version)` and holds only observations such as
+due time, attempts, response, latency, hints, lapses, and the scheduler's current
+stability estimate. Content changes create a new version rather than silently
+inheriting mastery of a different question.
+Replaceable evidence provenance has an independent version and does not reset
+mastery when the tested semantics are unchanged.
 
 For history-sensitive claims, a FEN is not enough.  The prompt must also carry
 the preceding UCI history or a certified history artifact, because threefold

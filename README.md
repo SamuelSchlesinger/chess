@@ -44,6 +44,12 @@ with an exact-position repertoire graph and persistent, player-specific review
 schedule. See the [roadmap](ROADMAP.md) and the
 [research synthesis](research/novel-chess-theory/index.md).
 
+Personal Chess.com exports can be validated and profiled locally with
+`scripts/player_games.py`. Raw exports remain untracked wherever they are
+stored; generated profiles are accepted by default only under the Git-ignored
+`data/private/`. The privacy and assurance boundary is documented in
+[player data](docs/PLAYER_DATA.md).
+
 ## Formal theory
 
 `Position` contains every field needed to interpret the next move; `GameState`

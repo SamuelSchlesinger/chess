@@ -1,3 +1,6 @@
 /.lake
 **/__pycache__/
 *.pyc
+
+# Personal game exports and derived learner profiles stay local by default.
+/data/private/

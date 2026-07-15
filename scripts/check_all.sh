@@ -28,5 +28,6 @@ uv run --with chess==1.11.2 python \
   research/novel-chess-theory/opening-decisions/data/pilot.py --check
 uv run --with chess==1.11.2 python \
   research/novel-chess-theory/certified-chess-knowledge/data/repetition_ep_counterexample.py --check
+uv run --with chess==1.11.2 python scripts/player_games.py --self-test
 
 echo "all chess validations passed"

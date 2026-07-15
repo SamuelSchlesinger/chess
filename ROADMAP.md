@@ -34,6 +34,13 @@ from every shared position across Lean and Rust.
 Gate: the player can execute the protocol under time pressure, and held-out
 games show which rules transfer rather than merely being recalled.
 
+Current status: a local-by-default, privacy-guarded multi-game Chess.com importer
+now produces an exact metadata profile and an optional bounded-Stockfish ranking
+of candidate review positions plus replay-checked engine-reference cards. The
+current private run generated 24 such cards and a provisional six-position
+manual block. A structured, independently reviewed label set, trainer delivery,
+and tested review schedule are still outstanding.
+
 ## 3. Repertoire as a robust graph
 
 - Compare candidate repertoires on soundness, encounter coverage, surprise
