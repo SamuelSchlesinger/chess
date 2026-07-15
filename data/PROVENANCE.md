@@ -127,3 +127,10 @@ computed edge/SCC results are documented in
 `data/lichess-openings/ANALYSIS.md`. The read-only reproducer
 `data/lichess-openings/analyze.py` requires exactly `chess==1.11.2`, verifies
 the pinned input hash, and hard-checks every empirical count in that report.
+
+The Rust `monorepo_fixtures` integration test independently consumes the root
+`perft.tsv`, `moves.tsv`, `traces.tsv`, and `opening_pairs.tsv` files. It checks
+their perft counts, legal/illegal UCI examples, raw and effective trace
+endpoints, repetition and draw flags, and exact versus repetition-only endpoint
+relations. These small rule fixtures therefore have one committed copy and two
+executable implementations.

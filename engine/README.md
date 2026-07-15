@@ -67,6 +67,7 @@ Every operation is validated against **publicly-downloaded datasets** (see
 | Packed | the 6 838-position suite | lossless round-trip + random-access agreement |
 | Draw rules | constructed positions | stalemate, threefold, 50/75-move, insufficient material |
 | Repetition identity | shared Lean/Rust fixtures + reachable game | clocks/castling, legal and pinned en passant, FIDE 3 occurrences vs. Polyglot 2 |
+| Monorepo conformance | root `data/*.tsv` also executed by Lean | perft, move legality, traces/draw flags, exact and repetition-only opening pairs |
 
 ```sh
 cargo test --release                 # fast suite

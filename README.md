@@ -110,6 +110,12 @@ transposition-fibre distribution. Source revisions, hashes, licenses,
 reproduction details, and the empirical graph report are recorded in
 [`data/PROVENANCE.md`](data/PROVENANCE.md).
 
+Rust's `monorepo_fixtures` integration test consumes these same root
+`perft.tsv`, `moves.tsv`, `traces.tsv`, and `opening_pairs.tsv` files. It checks
+move-generation counts, individual legality, full trace endpoints and draw
+thresholds, and exact versus repetition-only transpositions against the Rust
+runtime rather than maintaining a second copy of those cases.
+
 Rust deliberately separates its Polyglot-compatible `Board::hash()` from the
 structural FIDE `RepetitionKey`. A reachable-from-start regression includes a
 pinned en-passant occurrence whose Polyglot key differs after the target
