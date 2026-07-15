@@ -57,6 +57,19 @@ Applications*, LIPIcs 36, 2015, pp. 89–105.
 Relevance: supplies the established categorical setting for typed path
 presentations and quotient equations.
 
+<a id="cpt14"></a>
+## cpt14
+
+Stefan Renzewitz, *Chess Position Trainer 5 Manual*, 2014.
+[Official manual](https://www.chesspositiontrainer.com/download/manuals/CPT5_manual.pdf)
+and [official feature matrix](https://www.chesspositiontrainer.com/index.php/en/download)
+(accessed 2026-07-14).
+
+Relevance: documents practitioner prior art for position-database opening
+study, cross-opening transposition detection, flash-card training, and
+scheduled review. It narrows the player-product novelty claim to the explicit
+relation/deviation intervention rather than position-keyed deduplication.
+
 <a id="fide23"></a>
 ## fide23
 
@@ -82,11 +95,25 @@ already exist in computer-chess research, narrowing the novelty claim.
 ## flanagan05
 
 Cormac Flanagan and Patrice Godefroid, “Dynamic Partial-Order Reduction for
-Model Checking Software,” *POPL 2005*, pp. 110–121.
+Model Checking Software,” *ACM SIGPLAN Notices* 40(1), 2005, pp. 110–121;
+presented at POPL 2005.
 [DOI](https://doi.org/10.1145/1047659.1040315).
 
 Relevance: provides the primary dynamic, state-sensitive partial-order
-reduction precedent for the proposed opening-search experiments.
+reduction precedent for concurrent interleavings. It motivates an analogy but
+does not establish an alternating-game reduction theorem. The POPL proceedings
+record is also available as DOI `10.1145/1040305.1040315`.
+
+<a id="gambitlab26"></a>
+## gambitlab26
+
+GambitLab, “Spaced Repetition for Chess Openings,” product documentation.
+[Official site](https://gambit-lab.com/) (accessed 2026-07-14).
+
+Relevance: is current practitioner evidence that scheduled cards keyed by board
+position to avoid transposition duplication are already a marketed feature. It
+does not validate GambitLab's performance claims or this branch's proposed
+relation exercises.
 
 <a id="kishimoto04"></a>
 ## kishimoto04

@@ -2,13 +2,16 @@
 
 ## Recommendation
 
-Run **tablebase counterexample-and-repair** first, while building **bounded
-tactical certificates** as reusable infrastructure.  Keep **opening route
-dominance** as the high-upside parallel program.  Do not fund generic
-“explain a tablebase” work: interpretable rule induction from KRK and KBNK has
-been demonstrated for decades [bain1994][bain1994] [guid2010][guid2010], and a
-2025 study transferred machine-discovered chess concepts to elite grandmasters
-[schut2025][schut2025].
+Run a preregistered **tablebase counterexample-and-repair** pilot first because
+it is cheap to falsify, while building **bounded tactical certificates** as
+reusable infrastructure. Keep **opening route dominance** as the high-upside
+parallel program. Counterexample-guided tablebase repair is not the novelty:
+KNNKP claims were checked and codified against a tablebase, KQKR heuristics were
+explicitly assessed, and the KBNK work iteratively changed rule preconditions
+and goals in response to counterexamples [herschberg1989][herschberg1989]
+[jansen1992][jansen1992] [guid2010][guid2010]. A preliminary four-grandmaster
+study found post-learning improvement for machine-discovered concepts, but its
+authors identify priming and difficulty confounds [schut2025][schut2025].
 
 The sharper hypothesis is falsifiable: a narrowly stated human heuristic has a
 small set of structural exceptions; exhaustive labels can expose the minimal
@@ -24,19 +27,22 @@ small experiment can kill the idea.
 
 | Route | Novelty | Player usefulness | Lean leverage | Data access | Falsifying pilot | Total / 25 |
 |---|---:|---:|---:|---:|---:|---:|
-| Tablebase counterexample and repair | 4 | 5 | 5 | 5 | 5 | **24** |
+| Tablebase counterexample and repair | 2 | 5 | 5 | 5 | 5 | **22** |
 | Small-material exact classification | 3 | 4 | 5 | 5 | 4 | **21** |
 | Opening route dominance | 5 | 5 | 3 | 4 | 3 | **20** |
 | Bounded tactical certificates | 2 | 4 | 5 | 4 | 5 | **20** |
 | Generic tablebase rule extraction | 1 | 4 | 3 | 5 | 3 | **16** |
 
 The data and arithmetic are checked by
-[`rank_candidates.py`](data/rank_candidates.py).  The checked
-[sensitivity report](data/ranking-output.txt) reweights player value, novelty,
-and Lean leverage; counterexample-and-repair remains first in every declared
-profile.  These totals organize judgment rather than settle it.  In particular,
-opening route dominance is the strongest claim of substantive novelty, and its
-existing trainer makes deployment unusually direct.
+[`rank_candidates.py`](data/rank_candidates.py). The checked
+[sensitivity report](data/ranking-output.txt) includes the four declared
+profiles, all 3,125 integer weight vectors with weights 1–5, and every legal
+one-cell ±1 score perturbation. Counterexample-and-repair leads the equal,
+player-first, and Lean-first profiles; opening route dominance leads the
+novelty-first profile. The weight grid still favors the former often, but also
+contains ties and strict wins for other routes. This is sensitivity analysis
+over authored judgments, not empirical robustness or evidence that the method
+is novel.
 
 ## Why the routes score this way
 
@@ -45,22 +51,24 @@ existing trainer makes deployment unusually direct.
 Perfect WDL/DTZ labels, legal moves, and current seven-piece coverage are
 available through the Lichess tablebase API [lila-tablebase][lila-tablebase].
 Lean can state the heuristic and its repaired boundary against this repository's
-rules.  A single counterexample can reject a proposed universal rule, so the
-feedback loop is fast.  Novelty survives only if the final result is a new,
-specific theorem rather than “machine learning finds endgame patterns.”
+rules. A single counterexample can reject a proposed universal rule, so the
+feedback loop is fast. The established workflow earns a low novelty score;
+novelty survives only in the conjunction of a new exact chess predicate,
+canonical or minimal exceptions, a formal proof, and measured transfer.
 
 ### Opening route dominance
 
 The sibling [opening investigation](../opening-decisions/index.md) asks whether
 one move order exposes a subset of the opponent deviations exposed by another.
 That is new-looking, player-facing, and compatible with the current prefix-based
-opening trainer.  Its checked taxonomy pilot finds 350 White and 366 Black
-history-card reductions after exact position merging, plus 270 White-controlled
-and 265 Black-controlled same-target route pairs
-([checked output](../opening-decisions/data/output.txt)).  This establishes
-route-sensitive structure, not practical dominance: game frequency, opponent
-quality, and engine evaluation are still needed before a formal language
-inclusion becomes repertoire advice.
+opening trainer. Its checked taxonomy pilot reports corpus-relative duplicate-
+key differentials of 350 White and 366 Black decision nodes after exact
+position quotienting, plus 270 White and 265 Black history pairs with the same
+repetition-key endpoint under an identical opponent-UCI projection
+([checked output](../opening-decisions/data/output.txt)). These are taxonomy
+structure counts, not saved study cards or player-controlled dominance.
+Frequency, opponent quality, and engine evaluation are still needed before a
+formal language inclusion becomes repertoire advice.
 
 ### Bounded tactical certificates
 
@@ -81,19 +89,20 @@ must select a motif-level family and produce a compact predicate.
 ### Generic rule extraction
 
 The data are excellent and the output could teach players, but the novelty case
-is weakest.  Prior work learned fixed-depth KRK rules and semi-automatically
-derived a KBNK teaching strategy [bain1994][bain1994]
-[guid2010][guid2010].  Treat those papers as baselines to beat, not as an open
-problem statement.
+is weakest. Prior work learned fixed-depth KRK rules, verified endgame advice,
+assessed heuristic utility, and iteratively repaired a KBNK teaching strategy
+[bain1994][bain1994] [herschberg1989][herschberg1989]
+[jansen1992][jansen1992] [guid2010][guid2010]. Treat those papers as baselines
+to beat, not as an open problem statement.
 
 ## Smallest falsifying pilots
 
 | Route | First pilot | Kill condition |
 |---|---|---|
-| Counterexample and repair | Use the already formalized geometric pawn-square predicate as a plumbing control; enumerate a KPK slice, order mismatches canonically, and see whether familiar exception features repair it. | The loop cannot rediscover a short known repair, or the publishable family needs a lookup-sized exception list. |
+| Counterexample and repair | Run the frozen KPK control in [the mining protocol](tablebase-rule-mining.md), including its exact domain, initial rule, feature grammar, order, split, and clause budget. | The control exceeds four three-literal clauses, its first mismatches are not reproducible, or the later publishable target misses the predeclared transfer threshold. |
 | Opening route dominance | On a pinned game sample, compare transposing routes by opponent deviation language and downstream evaluation, stratified by rating and time control. | Apparent dominance disappears out of the opening-name catalog or changes sign under reasonable sampling choices. |
 | Tactical certificates | Check a mate-in-two with at least two legal defenses; delete one defense and require rejection. | The checker accepts an incomplete defense set, cannot state draw semantics, or certificates become too large for training artifacts. |
-| Small-material classification | Enumerate a symmetry-reduced KPKP corridor and classify placements whose WDL flips with side to move. | The result is merely a table, duplicates published classifications, or no short feature predicate predicts the labels exactly. |
+| Small-material classification | Run the frozen c-pawn-versus-f-pawn corridor and its untouched split in [the classification protocol](small-material-classification.md). | No formula in the predeclared four-clause grammar is exact, novelty fails review, or delayed transfer gain is below ten percentage points. |
 | Generic extraction | Reproduce one published KRK/KBNK baseline before attempting a new class. | The reproduction is less compact, less correct, or less teachable than the prior result. |
 
 The KPK control is deliberately not a novelty claim.  Its purpose is to test the
@@ -113,17 +122,21 @@ Advance a route only when all of these are true:
 4. the result compresses into a rule plus a small exception family;
 5. an unseen-position exercise tests transfer rather than diagram memory.
 
-The strongest immediate end-to-end demonstration is already present: the
-formal FIDE repetition key exposes a concrete Polyglot-key mismatch in the Rust
-game/search workflow, and the same counterexample becomes a compact rules drill.
-That example validates the research method even before a novel chess theorem is
-found.
+The strongest immediate end-to-end demonstration is already present: a full
+legal history exposes the old Polyglot undercount, while the current Rust
+`Game` and search paths use exact structural repetition keys. `Game` counts
+FIDE occurrences; search separately treats one matching ancestor as an
+internal twofold draw heuristic. The same history becomes a compact rules
+drill. This validates a diagnostic-and-repair pipeline, not a novel chess
+theorem.
 
 ## Local References
 
 - **bain1994** — Michael Bain and Stephen Muggleton, “Learning Optimal Chess Strategies,” in *Machine Intelligence 13: Machine Intelligence and Inductive Learning*, Oxford University Press, 1994, 291–309. DOI 10.1093/oso/9780198538509.003.0012.
 - **guid2010** — Matej Guid, Martin Možina, Aleksander Sadikov, and Ivan Bratko, “Deriving Concepts and Strategies from Chess Tablebases,” in *Advances in Computer Games*, LNCS 6048, Springer, 2010, 195–207. DOI 10.1007/978-3-642-12993-3_18.
-- **schut2025** — Lisa Schut, Nenad Tomašev, Thomas McGrath, Demis Hassabis, Ulrich Paquet, and Been Kim, “Bridging the Human–AI Knowledge Gap through Concept Discovery and Transfer in AlphaZero,” *Proceedings of the National Academy of Sciences* 122(13), 2025, e2406675122. DOI 10.1073/pnas.2406675122.
+- **herschberg1989** — Israel S. Herschberg, H. Jaap van den Herik, and Peter N. A. Schoo, “Verifying and Codifying Strategies in the KNNKP(h) Endgame,” *ICCA Journal* 12(3), 1989, 144–154. DOI 10.3233/ICG-1989-12304.
+- **jansen1992** — Peter Jansen, “KQKR: Assessing the Utility of Heuristics,” *ICCA Journal* 15(4), 1992, 179–191. DOI 10.3233/ICG-1992-15402.
+- **schut2025** — Lisa Schut, Nenad Tomašev, Thomas McGrath, Demis Hassabis, Ulrich Paquet, and Been Kim, “Bridging the Human–AI Knowledge Gap through Concept Discovery and Transfer in AlphaZero,” *Proceedings of the National Academy of Sciences* 122(13), 2025, e2406675122. DOI 10.1073/pnas.2406675122; reports a preliminary four-participant human study and discusses possible priming and difficulty confounds.
 - **lila-tablebase** — Lichess, `lila-tablebase` README and HTTP API documentation, GitHub repository, current snapshot inspected 14 July 2026.
 - **allis1994** — L. Victor Allis, Maarten van der Meulen, and H. Jaap van den Herik, “Proof-Number Search,” *Artificial Intelligence* 66(1), 1994, 91–124. DOI 10.1016/0004-3702(94)90004-3.
 - **hurd2005** — Joe Hurd, “Formal Verification of Chess Endgame Databases,” in *Theorem Proving in Higher Order Logics: Emerging Trends Proceedings*, Oxford University Computing Laboratory, 2005, 85–100.
@@ -131,6 +144,8 @@ found.
 
 [bain1994]: https://doi.org/10.1093/oso/9780198538509.003.0012
 [guid2010]: https://doi.org/10.1007/978-3-642-12993-3_18
+[herschberg1989]: https://doi.org/10.3233/ICG-1989-12304
+[jansen1992]: https://doi.org/10.3233/ICG-1992-15402
 [schut2025]: https://doi.org/10.1073/pnas.2406675122
 [lila-tablebase]: https://github.com/lichess-org/lila-tablebase/blob/main/README.md
 [allis1994]: https://doi.org/10.1016/0004-3702(94)90004-3

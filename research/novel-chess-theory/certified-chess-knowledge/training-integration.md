@@ -7,9 +7,11 @@ that turns one theorem into a rule, its boundary, contrastive exceptions, and
 exercises whose answers can be checked independently.
 
 This is a contribution to a path toward roughly 2000 playing strength, not a
-rating guarantee.  The training system still needs game review, calculation,
-opening decisions, and practical play.  Certification prevents bad material
-from entering that loop; it does not decide the best curriculum by itself.
+rating guarantee. The training system still needs game review, calculation,
+opening decisions, and practical play. When a concrete assurance artifact
+entails an exact answer, it prevents the declared class of semantic errors
+(such as an omitted legal defense or the wrong repetition identity). It does
+not certify the explanation, curriculum, retention effect, or practical value.
 
 ## The existing delivery layer
 
@@ -39,26 +41,49 @@ record should have this conceptual shape:
 
 ```json
 {
-  "id": "fide-repetition-effective-ep/v1",
+  "id": "fide-repetition-effective-ep-history/v1",
   "kind": "rule-exception",
   "prompt": {
-    "fen": "8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1",
-    "question": "Does removing the d3 en-passant field change the FIDE repetition position?"
+    "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "uci_history": ["d2d4", "e7e5", "d4e5", "g8f6", "e2e4", "f6e4", "g1f3", "e4c5", "b1c3", "g7g6", "c1f4", "f8g7", "d1d2", "e8g8", "h2h3", "f8e8", "a2a3", "d7d5", "f3g1", "b8d7", "g1f3", "d7b8", "f3g1", "b8d7", "g1f3", "d7b8"],
+    "question": "How many times has the current FIDE repetition position occurred?"
   },
   "answer": {
-    "verdict": "no",
+    "verdict": "3",
     "accepted_uci": [],
-    "explanation": "...exd3 e.p. is pseudo-legal but exposes the black king on a4 to Qh4, so the target is ineffective."
+    "explanation": "After ...d7d5, e5d6 e.p. is pseudo-legal but exposes White's king to Re8. The raw target is ineffective, so the two later knight-cycle returns are the second and third FIDE occurrences."
   },
   "claim": {
     "semantics": "FIDE-2023",
-    "lean_name": "Chess.RepetitionKey.ofPosition_eq_iff",
-    "checker": "repetition_ep_counterexample.py",
+    "assurance": "cross-validated-diagnostic",
+    "concrete_lean_theorem": null,
+    "evidence": [
+      {"kind": "formal-model-theorem", "ref": "Chess.RepetitionKey.ofPosition_eq_iff", "scope": "generic identity equivalence only"},
+      {"kind": "pinned-oracle", "ref": "repetition_ep_counterexample.py", "version": "chess==1.11.2"},
+      {"kind": "engine-regression", "ref": "engine/tests/repetition.rs::standard_start_threefold_is_not_undercounted_by_polyglot_ep_semantics"}
+    ],
     "artifact_sha256": "filled by export"
   },
   "tags": ["rules", "repetition", "en-passant", "exception"]
 }
 ```
+
+`assurance` is one disjoint primary value:
+
+- `lean-theorem-instance` means a named concrete theorem entails this exact
+  answer under the named semantics;
+- `checked-certificate` means a versioned checker accepted a certificate whose
+  digest is stored;
+- `pinned-oracle` and `engine-regression` mean reproducible executable evidence,
+  not a theorem;
+- `engine-estimate` is a depth/time/model-specific empirical judgment;
+- `human-hypothesis` is an ungraded proposition awaiting a study;
+- `cross-validated-diagnostic` means several independent artifacts agree but no
+  one formal artifact entails the complete external claim.
+
+Tablebase-backed records use `pinned-oracle` and must additionally name the
+metric, table family, endpoint or file digest, and clock semantics. Assurance
+labels are not silently promoted when a nearby generic theorem exists.
 
 The runtime review row is keyed by `(user, item id, content version)` and holds
 only observations such as due time, attempts, response, latency, hints, lapses,
@@ -80,49 +105,67 @@ notion as `effectiveEnPassantTarget` and proves that equality of
 is merely a bucket hash backed by exact equality
 [lean-repetition-key][lean-repetition-key].
 
-The Rust engine has the right ingredients but currently composes them at the
-wrong boundary:
+The pinned `python-chess` implementation records the Polyglot convention
+directly: an adjacent pawn causes the en-passant file to be hashed even when
+the potential capture is illegal [python-chess112][python-chess112]. Its
+`chess-1.11.2.tar.gz` source artifact is pinned by SHA-256 in the executable
+report.
 
-1. `Board::hash()` is explicitly Polyglot-compatible.
-2. Its en-passant contribution tests for an adjacent capturing pawn, which is
-   the Polyglot convention, but does not test whether the capture leaves that
-   pawn's king safe [rust-board][rust-board].
-3. `Game::repetition_count` compares those hashes, and search seeds and scans
-   the same keys for repetition [rust-game][rust-game]
+The current Rust implementation now separates the two identities:
+
+1. `Board::hash()` remains Polyglot-compatible for opening books and the
+   transposition table [rust-board][rust-board].
+2. `RepetitionKey` stores the complete 64-square placement, side to move,
+   castling rights, and a raw en-passant target only when at least one
+   en-passant capture is legal. Equality is structural; derived hashing can
+   index a collection but does not decide equality [rust-repetition][rust-repetition].
+3. `Game::position_keys` stores those records and `Game::repetition_count`
+   compares them exactly [rust-game][rust-game].
+4. Search stores the same exact records, but deliberately reports an internal
+   repetition draw after one matching ancestor in the reversible-move window.
+   That twofold search heuristic is not the FIDE threefold claim rule
    [rust-search][rust-search].
 
-The local counterexample is:
+The end-to-end witness starts from the standard initial position:
 
 ```text
-with en passant:    8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1
-without en passant: 8/8/8/8/k2Pp2Q/8/8/3K4 b - - 0 1
+1.d4 e5 2.dxe5 Nf6 3.e4 Nxe4 4.Nf3 Nc5 5.Nc3 g6
+6.Bf4 Bg7 7.Qd2 O-O 8.h3 Re8 9.a3 d5
+10.Ng1 Nbd7 11.Nf3 Nb8 12.Ng1 Nbd7 13.Nf3 Nb8
 ```
 
-Black's pawn on e4 is adjacent to d3, but `...exd3 e.p.` removes the e4 and d4
-pawns and exposes the black king on a4 to the white queen on h4.  The Rust
-move-generation test already establishes that the capture is illegal
-[rust-ep-test][rust-ep-test].  The pinned oracle script independently confirms
-that the two FIDE keys are equal while their Polyglot hashes differ; the exact
-run is recorded in [repetition-ep-output.txt](data/repetition-ep-output.txt).
+Immediately after `9...d5`, `e5xd6 e.p.` is pseudo-legal but illegal because
+moving the e5-pawn exposes White's king on e1 to the rook on e8. FIDE identity
+therefore erases the raw `d6` target. Each reversible four-ply knight cycle
+returns to that same FIDE position after the raw target has expired. The pinned
+oracle reports three current FIDE-key occurrences but only two occurrences of
+the later Polyglot hash; its exact run is recorded in
+[repetition-ep-output.txt](data/repetition-ep-output.txt), including a composite
+SHA-256 of the four Rust repetition sources. The Rust regression replays the
+same full history, asserts `Game::repetition_count() == 3`, and independently
+simulates the legacy Polyglot count `2`
+[rust-repetition-test][rust-repetition-test].
 
-This mismatch can undercount a real repetition in both `Game` and search.  It
-does not require abandoning Polyglot compatibility: the design lesson is to
-retain `Board::hash()` for book and transposition uses while adding a distinct
-FIDE repetition identity whose en-passant component is conditioned on a
-*legal* capture.  No change to the Rust repository is made in this research
-branch.
+This is a repaired integration hazard, not a current `Game` undercount. It is
+also a cross-validated diagnostic rather than a concrete Lean theorem: the Lean
+result proves the generic modeled identity, while the Python and Rust artifacts
+establish this particular external history. A future
+`lean-theorem-instance` must replay these exact moves and prove the count before
+the item can carry that stronger label.
 
 This one result yields three human-facing artifacts:
 
 - **Rule card:** same placement, side, and castling rights are not sufficient;
   en passant matters exactly when it creates a legal move.
-- **Exception pair:** show the two FENs above and ask whether they are the same
-  repetition position before showing the pin.
+- **Exception pair:** show the position immediately after `9...d5` beside the
+  first knight-cycle return and ask whether the expired raw target changes
+  FIDE identity before showing the pin.
 - **System check:** reject any exercise export or game-history count that uses
   a raw FEN field or Polyglot hash as exact FIDE identity.
 
 That is the desired pipeline in miniature: formal definition, executable
-counterexample, engine-level consequence, and a memorable exception drill.
+history, exact engine repair, explicitly bounded assurance, and a memorable
+exception drill.
 
 ## Four exercise forms
 
@@ -162,8 +205,11 @@ A compact daily loop can use the same queue without conflating its item types:
 
 Once per week, import recent games into the existing analysis GUI and convert
 recurring errors into tagged candidate items.  A candidate becomes schedulable
-only after its exact answer has a theorem, a checked certificate, a tablebase
-provenance record, or an explicitly labeled empirical engine threshold.
+only after it carries one primary assurance value and the interface displays
+that value. Exact-answer grading requires a concrete theorem instance, checked
+certificate, pinned oracle, or engine regression. An `engine-estimate` must show
+its search budget; a `human-hypothesis` may enter a study queue but cannot grade
+an answer as fact.
 
 The dashboard should privilege delayed first-attempt accuracy, exception false
 positives, and unseen transfer.  Engine-match percentage and centipawn loss are
@@ -175,6 +221,7 @@ configuration rather than stable chess knowledge.
 Promote a knowledge item only when:
 
 - its semantics are named (`FIDE game`, history-free board, WDL, DTZ, or DTM);
+- its primary assurance label matches the exact artifact actually present;
 - every accepted answer is independently checked;
 - the rule text states its domain and known exceptions;
 - at least one near-miss or mutation is rejected by the checker;
@@ -192,10 +239,12 @@ semantics.
 - **trainer-app** — `engine/src/bin/chess-trainer/app.js`, session state, six-move reps, and statistics, imported Rust snapshot inspected 14 July 2026.
 - **fide2023** — International Chess Federation, *FIDE Laws of Chess Taking Effect from 1 January 2023*, Articles 5.2.2, 9.2.3, 9.3, and 9.6, approved 7 August 2022.
 - **lean-repetition-key** — `Chess/RepetitionKey.lean`, exact executable repetition key and equivalence theorem, local formalization repository snapshot inspected 14 July 2026.
+- **python-chess112** — Niklas Fiekas, `python-chess` v1.11.2, `chess/polyglot.py`, released 25 February 2025; the implementation states that legality of a potential en-passant capture is irrelevant to the Polyglot hash. The `chess-1.11.2.tar.gz` SHA-256 used in the validation ledger is `a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39`.
 - **rust-board** — `engine/src/board.rs`, `Board::hash` and `ep_hash_contribution`, imported Rust snapshot inspected 14 July 2026.
-- **rust-game** — `engine/src/game.rs`, `Game::position_keys` and `Game::repetition_count`, imported Rust snapshot inspected 14 July 2026.
-- **rust-search** — `engine/src/search.rs`, search-history and repetition detection, imported Rust snapshot inspected 14 July 2026.
-- **rust-ep-test** — `engine/tests/legal_movegen.rs`, `ep_discovered_check_is_illegal`, imported Rust snapshot inspected 14 July 2026.
+- **rust-repetition** — `engine/src/repetition.rs`, structural `RepetitionKey`, legally effective en-passant component, and canonical position ID, working-tree snapshot inspected 14 July 2026.
+- **rust-game** — `engine/src/game.rs`, exact `Game::position_keys` and `Game::repetition_count`, working-tree snapshot inspected 14 July 2026.
+- **rust-search** — `engine/src/search.rs`, exact structural search history and internal earlier-ancestor repetition heuristic, working-tree snapshot inspected 14 July 2026.
+- **rust-repetition-test** — `engine/tests/repetition.rs`, full-start en-passant history asserting exact count 3 and simulated legacy Polyglot count 2, working-tree snapshot inspected 14 July 2026.
 - **roediger-karpicke2006** — Henry L. Roediger III and Jeffrey D. Karpicke, “Test-Enhanced Learning: Taking Memory Tests Improves Long-Term Retention,” *Psychological Science* 17(3), 2006, 249–255. DOI 10.1111/j.1467-9280.2006.01693.x.
 - **cepeda2008** — Nicholas J. Cepeda, Edward Vul, Doug Rohrer, John T. Wixted, and Harold Pashler, “Spacing Effects in Learning: A Temporal Ridgeline of Optimal Retention,” *Psychological Science* 19(11), 2008, 1095–1102. DOI 10.1111/j.1467-9280.2008.02209.x.
 
@@ -204,9 +253,11 @@ semantics.
 [trainer-app]: ../../../engine/src/bin/chess-trainer/app.js
 [fide2023]: https://handbook.fide.com/chapter/E012023
 [lean-repetition-key]: ../../../Chess/RepetitionKey.lean
+[python-chess112]: https://github.com/niklasf/python-chess/blob/v1.11.2/chess/polyglot.py
 [rust-board]: ../../../engine/src/board.rs
+[rust-repetition]: ../../../engine/src/repetition.rs
 [rust-game]: ../../../engine/src/game.rs
 [rust-search]: ../../../engine/src/search.rs
-[rust-ep-test]: ../../../engine/tests/legal_movegen.rs
+[rust-repetition-test]: ../../../engine/tests/repetition.rs
 [roediger-karpicke2006]: https://doi.org/10.1111/j.1467-9280.2006.01693.x
 [cepeda2008]: https://doi.org/10.1111/j.1467-9280.2008.02209.x

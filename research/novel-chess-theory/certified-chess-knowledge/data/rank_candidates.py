@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import itertools
 from pathlib import Path
 
 
@@ -96,7 +97,93 @@ def render(rows: list[tuple[str, dict[str, int]]]) -> str:
             f"  {place}. {name}: {value:.3f}"
             for place, (value, name) in enumerate(ranked, start=1)
         )
+
+    lines.extend(["", "integer-weight grid (each criterion weight 1..5):"])
+    weight_profiles = [
+        dict(zip(CRITERIA, values, strict=True))
+        for values in itertools.product(range(1, 6), repeat=len(CRITERIA))
+    ]
+    grid_summary = winner_summary(rows, weight_profiles)
+    lines.append(f"  profiles: {len(weight_profiles)}")
+    lines.append(f"  tied first place: {grid_summary['ties']}")
+    for name, _ in rows:
+        lines.append(
+            f"  {name}: {grid_summary['strict'][name]} strict wins; "
+            f"{grid_summary['appearances'][name]} first-place appearances"
+        )
+
+    score_variants = one_cell_score_variants(rows)
+    lines.extend(
+        [
+            "",
+            "one-cell score perturbations "
+            "(baseline plus each legal +/-1 change to one score):",
+            f"  scenarios per profile: {len(score_variants)}",
+        ]
+    )
+    for profile, weights in PROFILES.items():
+        summaries = [winner_names(variant, weights) for variant in score_variants]
+        strict = {name: 0 for name, _ in rows}
+        appearances = {name: 0 for name, _ in rows}
+        ties = 0
+        for winners in summaries:
+            if len(winners) == 1:
+                strict[next(iter(winners))] += 1
+            else:
+                ties += 1
+            for name in winners:
+                appearances[name] += 1
+        strict_text = ", ".join(f"{name}={strict[name]}" for name, _ in rows)
+        appearance_text = ", ".join(
+            f"{name}={appearances[name]}" for name, _ in rows
+        )
+        lines.append(f"  {profile}: tied={ties}; strict wins: {strict_text}")
+        lines.append(f"    first-place appearances: {appearance_text}")
     return "\n".join(lines) + "\n"
+
+
+def winner_names(
+    rows: list[tuple[str, dict[str, int]]], weights: dict[str, int]
+) -> set[str]:
+    totals = {
+        name: sum(scores[key] * weights[key] for key in CRITERIA)
+        for name, scores in rows
+    }
+    maximum = max(totals.values())
+    return {name for name, total in totals.items() if total == maximum}
+
+
+def winner_summary(
+    rows: list[tuple[str, dict[str, int]]], profiles: list[dict[str, int]]
+) -> dict[str, object]:
+    strict = {name: 0 for name, _ in rows}
+    appearances = {name: 0 for name, _ in rows}
+    ties = 0
+    for weights in profiles:
+        winners = winner_names(rows, weights)
+        if len(winners) == 1:
+            strict[next(iter(winners))] += 1
+        else:
+            ties += 1
+        for name in winners:
+            appearances[name] += 1
+    return {"strict": strict, "appearances": appearances, "ties": ties}
+
+
+def one_cell_score_variants(
+    rows: list[tuple[str, dict[str, int]]],
+) -> list[list[tuple[str, dict[str, int]]]]:
+    variants = [[(name, scores.copy()) for name, scores in rows]]
+    for row_index, (_, scores) in enumerate(rows):
+        for criterion in CRITERIA:
+            for delta in (-1, 1):
+                changed = scores[criterion] + delta
+                if not 1 <= changed <= 5:
+                    continue
+                variant = [(name, values.copy()) for name, values in rows]
+                variant[row_index][1][criterion] = changed
+                variants.append(variant)
+    return variants
 
 
 def main() -> None:

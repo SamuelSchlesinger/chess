@@ -18,15 +18,15 @@ cargo test --manifest-path engine/Cargo.toml
 
 echo "[5/6] Research structure and dependency-free pilots"
 python3 research/novel-chess-theory/certified-chess-knowledge/data/check_corpus.py
-python3 research/novel-chess-theory/certified-chess-knowledge/data/rank_candidates.py >/dev/null
-python3 research/novel-chess-theory/certified-chess-knowledge/data/state_space_bounds.py >/dev/null
+python3 research/novel-chess-theory/certified-chess-knowledge/data/rank_candidates.py --check
+python3 research/novel-chess-theory/certified-chess-knowledge/data/state_space_bounds.py --check
 
 echo "[6/6] Pinned python-chess pilots"
 uv run --with chess==1.11.2 python \
   research/novel-chess-theory/transposition-algebra/data/classify_transpositions.py >/dev/null
 uv run --with chess==1.11.2 python \
-  research/novel-chess-theory/opening-decisions/data/pilot.py >/dev/null
+  research/novel-chess-theory/opening-decisions/data/pilot.py --check
 uv run --with chess==1.11.2 python \
-  research/novel-chess-theory/certified-chess-knowledge/data/repetition_ep_counterexample.py >/dev/null
+  research/novel-chess-theory/certified-chess-knowledge/data/repetition_ep_counterexample.py --check
 
 echo "all chess validations passed"

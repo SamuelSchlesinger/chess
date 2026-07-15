@@ -4,9 +4,11 @@
 This is a deliberately small *discriminating* pilot.  It checks whether the
 curated corpus contains enough structure to distinguish:
 
-1. move-word study cards from exact-position study cards;
-2. routes to the same position whose opponent-facing branch exposure differs;
-3. high-multiplicity transposition nodes with reusable downstream material.
+1. move-history decision nodes from repetition-key decision nodes;
+2. same-repetition-key-endpoint histories whose summed opponent branch
+   incidences differ;
+3. high-multiplicity transposition nodes with many downstream terminal
+   histories in the taxonomy.
 
 It does not estimate move popularity, practical danger, or chess strength.  The
 pinned opening-name corpus is a taxonomy, not a game sample.  Those quantities
@@ -20,10 +22,13 @@ Dependency:
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
+import io
 import itertools
 from collections import Counter, defaultdict
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 from typing import DefaultDict, Dict, List, Mapping, Set, Tuple
@@ -35,23 +40,22 @@ EXPECTED_CHESS_VERSION = "1.11.2"
 EXPECTED_SHA256 = "fd710d16bf5cdd750a565ee1a6aba19eb2c7db7d74d7df961f6e00fb1cd04a6e"
 ROOT = Path(__file__).resolve().parents[4]
 INPUT = ROOT / "data" / "lichess-openings" / "all.tsv"
+OUTPUT = Path(__file__).resolve().parent / "output.txt"
 
 EXPECTED_PILOT = {
-    "white history decision cards": 3_091,
-    "white position decision cards": 2_741,
-    "black history decision cards": 3_102,
-    "black position decision cards": 2_736,
-    "white controllable route pairs": 270,
-    "white pairs with catalog-count difference": 247,
-    "white pairs with legal-count difference": 32,
-    "white strict catalog-outcome inclusions": 41,
-    "black controllable route pairs": 265,
-    "black pairs with catalog-count difference": 220,
-    "black pairs with legal-count difference": 98,
-    "black strict catalog-outcome inclusions": 46,
+    "white history decision nodes": 3_091,
+    "white repetition-key decision nodes": 2_741,
+    "black history decision nodes": 3_102,
+    "black repetition-key decision nodes": 2_736,
+    "white opponent-projection-matched pairs": 270,
+    "white pairs with catalog-incidence difference": 247,
+    "white pairs with legal-incidence difference": 32,
+    "black opponent-projection-matched pairs": 265,
+    "black pairs with catalog-incidence difference": 220,
+    "black pairs with legal-incidence difference": 98,
     "top hub score": 577,
     "top hub route multiplicity": 2,
-    "top hub downstream endpoints": 577,
+    "top hub downstream terminal histories": 577,
 }
 
 History = Tuple[str, ...]
@@ -92,18 +96,34 @@ def san(history: History) -> str:
 
 
 @dataclass(frozen=True)
+class DeviationEvent:
+    """A typed, route-local alternative at one opponent decision.
+
+    Keeping the decision index, pre-deviation key, move, and child key avoids
+    conflating alternatives from different plies.  Events from different
+    routes are not compared by set inclusion in this pilot: that requires the
+    common opponent-scenario semantics specified in the formal model.
+    """
+
+    opponent_decision: int
+    pre_deviation_key: PositionKey
+    move: str
+    child_key: PositionKey
+
+
+@dataclass(frozen=True)
 class RouteExposure:
     """Branch exposure along a fixed route, for one repertoire side.
 
-    `catalog_outcomes` records exact child positions of alternative opponent
-    moves present in this curated corpus. `catalog_count` counts alternatives
-    at every encounter; `legal_count` does the same over all legal moves.  The
-    latter is an opportunity-surface count, not a claim that every move is good.
+    `catalog_events` preserves typed alternatives present in the curated
+    corpus. The incidence counts sum alternatives separately at every opponent
+    decision; they are not counts of unique moves or claims that any move is
+    common, difficult, dangerous, or good.
     """
 
-    catalog_outcomes: frozenset[PositionKey]
-    catalog_count: int
-    legal_count: int
+    catalog_events: frozenset[DeviationEvent]
+    catalog_branch_incidences: int
+    legal_branch_incidences: int
 
 
 def exposure(
@@ -112,9 +132,10 @@ def exposure(
     boards: Mapping[History, chess.Board],
     children: Mapping[History, Set[str]],
 ) -> RouteExposure:
-    catalog_outcomes: Set[PositionKey] = set()
-    catalog_count = 0
-    legal_count = 0
+    catalog_events: Set[DeviationEvent] = set()
+    catalog_branch_incidences = 0
+    legal_branch_incidences = 0
+    opponent_decision = 0
 
     for ply, intended_token in enumerate(history):
         prefix = history[:ply]
@@ -124,14 +145,29 @@ def exposure(
 
         intended = chess.Move.from_uci(intended_token)
         catalog_alternatives = children[prefix] - {intended_token}
-        catalog_count += len(catalog_alternatives)
-        legal_count += sum(move != intended for move in board.legal_moves)
+        catalog_branch_incidences += len(catalog_alternatives)
+        legal_branch_incidences += sum(move != intended for move in board.legal_moves)
         for token in catalog_alternatives:
             child = board.copy(stack=False)
             child.push(chess.Move.from_uci(token))
-            catalog_outcomes.add(position_key(child))
+            catalog_events.add(
+                DeviationEvent(
+                    opponent_decision,
+                    position_key(board),
+                    token,
+                    position_key(child),
+                )
+            )
+        opponent_decision += 1
 
-    return RouteExposure(frozenset(catalog_outcomes), catalog_count, legal_count)
+    if len(catalog_events) != catalog_branch_incidences:
+        raise AssertionError("typed catalog events unexpectedly collapsed")
+
+    return RouteExposure(
+        frozenset(catalog_events),
+        catalog_branch_incidences,
+        legal_branch_incidences,
+    )
 
 
 def side_moves(history: History, side: chess.Color) -> Tuple[str, ...]:
@@ -198,7 +234,7 @@ def fmt_side(side: chess.Color) -> str:
     return "White" if side == chess.WHITE else "Black"
 
 
-def main() -> None:
+def run() -> None:
     boards, children, terminal_counts, terminal_names = load()
     descendants = descendant_terminals(boards, terminal_counts)
 
@@ -214,7 +250,7 @@ def main() -> None:
 
     actual: Dict[str, int] = {}
 
-    print("decision-card compression (corpus-relative)")
+    print("decision-node quotient (corpus-relative)")
     for side in (chess.WHITE, chess.BLACK):
         decision_histories = [
             history
@@ -225,21 +261,26 @@ def main() -> None:
         saving = len(decision_histories) - len(decision_positions)
         percent = 100.0 * saving / len(decision_histories)
         side_key = fmt_side(side).lower()
-        actual[f"{side_key} history decision cards"] = len(decision_histories)
-        actual[f"{side_key} position decision cards"] = len(decision_positions)
+        actual[f"{side_key} history decision nodes"] = len(decision_histories)
+        actual[f"{side_key} repetition-key decision nodes"] = len(decision_positions)
         print(
-            f"  {fmt_side(side)}: {len(decision_histories)} history cards -> "
-            f"{len(decision_positions)} position cards; save {saving} ({percent:.2f}%)"
+            f"  {fmt_side(side)}: {len(decision_histories)} history decision nodes -> "
+            f"{len(decision_positions)} repetition-key decision nodes; "
+            f"duplicate-key differential {saving} ({percent:.2f}%)"
         )
     print()
 
-    # A route pair is controllable by `side` under the recorded replies when
-    # the opponent's move sequence is identical but that side's sequence is not.
-    candidates: Dict[chess.Color, List[Tuple[int, History, History, RouteExposure, RouteExposure]]] = {
+    # These are projection-matched recorded histories, not yet controllable
+    # route policies: the opponent's raw UCI projection is identical while the
+    # selected side's projection differs. Gate 2 constructs conditional policies
+    # over a common opponent-scenario space before using control language.
+    candidates: Dict[
+        chess.Color,
+        List[Tuple[int, History, History, RouteExposure, RouteExposure]],
+    ] = {
         chess.WHITE: [],
         chess.BLACK: [],
     }
-    strict_outcome_dominance = Counter()
     for histories in fibres.values():
         for left, right in itertools.combinations(histories, 2):
             if len(left) != len(right):
@@ -251,48 +292,57 @@ def main() -> None:
                     continue
                 left_exposure = exposure(left, side, boards, children)
                 right_exposure = exposure(right, side, boards, children)
-                delta = abs(left_exposure.catalog_count - right_exposure.catalog_count)
+                delta = abs(
+                    left_exposure.catalog_branch_incidences
+                    - right_exposure.catalog_branch_incidences
+                )
                 candidates[side].append((delta, left, right, left_exposure, right_exposure))
-                if (
-                    left_exposure.catalog_outcomes < right_exposure.catalog_outcomes
-                    or right_exposure.catalog_outcomes < left_exposure.catalog_outcomes
-                ):
-                    strict_outcome_dominance[side] += 1
 
-    print("same-target route comparisons under identical recorded replies")
+    print(
+        "same-repetition-key-endpoint history comparisons under identical "
+        "opponent UCI projection"
+    )
     for side in (chess.WHITE, chess.BLACK):
         with_catalog_difference = sum(
-            left.catalog_count != right.catalog_count
+            left.catalog_branch_incidences != right.catalog_branch_incidences
             for _, _, _, left, right in candidates[side]
         )
         with_legal_difference = sum(
-            left.legal_count != right.legal_count
+            left.legal_branch_incidences != right.legal_branch_incidences
             for _, _, _, left, right in candidates[side]
         )
         side_key = fmt_side(side).lower()
-        actual[f"{side_key} controllable route pairs"] = len(candidates[side])
-        actual[f"{side_key} pairs with catalog-count difference"] = with_catalog_difference
-        actual[f"{side_key} pairs with legal-count difference"] = with_legal_difference
-        actual[f"{side_key} strict catalog-outcome inclusions"] = strict_outcome_dominance[side]
+        actual[f"{side_key} opponent-projection-matched pairs"] = len(candidates[side])
+        actual[f"{side_key} pairs with catalog-incidence difference"] = (
+            with_catalog_difference
+        )
+        actual[f"{side_key} pairs with legal-incidence difference"] = (
+            with_legal_difference
+        )
         print(
-            f"  {fmt_side(side)}: {len(candidates[side])} controllable pairs; "
-            f"catalog-count differs in {with_catalog_difference}; "
-            f"legal-count differs in {with_legal_difference}; "
-            f"strict catalog-outcome inclusion in {strict_outcome_dominance[side]}"
+            f"  {fmt_side(side)}: {len(candidates[side])} projection-matched pairs; "
+            f"summed catalog branch incidences differ in {with_catalog_difference}; "
+            f"summed legal branch incidences differ in {with_legal_difference}"
         )
     print()
 
     print("largest curated branch-exposure contrasts")
     for side in (chess.WHITE, chess.BLACK):
-        ranked = sorted(candidates[side], key=lambda item: (item[0], item[1], item[2]), reverse=True)
+        ranked = sorted(
+            candidates[side],
+            key=lambda item: (item[0], item[1], item[2]),
+            reverse=True,
+        )
         print(f"  {fmt_side(side)}")
         emitted = 0
         for delta, left, right, left_exposure, right_exposure in ranked:
             if delta == 0:
                 break
             print(
-                f"    catalog {left_exposure.catalog_count} vs {right_exposure.catalog_count}; "
-                f"legal {left_exposure.legal_count} vs {right_exposure.legal_count}"
+                f"    catalog incidences {left_exposure.catalog_branch_incidences} vs "
+                f"{right_exposure.catalog_branch_incidences}; legal incidences "
+                f"{left_exposure.legal_branch_incidences} vs "
+                f"{right_exposure.legal_branch_incidences}"
             )
             print(f"      A: {san(left)}")
             print(f"      B: {san(right)}")
@@ -304,7 +354,7 @@ def main() -> None:
     print()
 
     # Hub score is intentionally descriptive: how many distinct trie histories
-    # share a position, and how many named endpoints remain below any of those
+    # share a position, and how many terminal histories remain below any of those
     # representatives.  It is not a popularity or strength estimate.
     hubs: List[Tuple[int, int, int, PositionKey, List[History], Set[History]]] = []
     for key, histories in fibres.items():
@@ -316,20 +366,27 @@ def main() -> None:
         leverage = (len(histories) - 1) * len(downstream)
         hubs.append((leverage, len(histories), len(downstream), key, histories, downstream))
 
-    print("top structural transposition hubs")
+    print("top taxonomy transposition hubs")
     ranked_hubs = sorted(
         hubs, reverse=True, key=lambda item: (item[0], item[1], item[2])
     )
     top_hub = ranked_hubs[0]
     actual["top hub score"] = top_hub[0]
     actual["top hub route multiplicity"] = top_hub[1]
-    actual["top hub downstream endpoints"] = top_hub[2]
-    for leverage, multiplicity, downstream_count, _, histories, downstream in ranked_hubs[:10]:
+    actual["top hub downstream terminal histories"] = top_hub[2]
+    for (
+        taxonomy_score,
+        multiplicity,
+        downstream_count,
+        _,
+        histories,
+        downstream,
+    ) in ranked_hubs[:10]:
         representative = min(histories, key=lambda history: (len(history), history))
         names = sorted({terminal_names[h] for h in downstream})
         name_sample = "; ".join(names[:3]) + ("; ..." if len(names) > 3 else "")
         print(
-            f"  score={leverage}, routes={multiplicity}, downstream named endpoints="
+            f"  score={taxonomy_score}, routes={multiplicity}, downstream terminal histories="
             f"{downstream_count}: {san(representative)}"
         )
         print(f"    {name_sample or '(no named endpoint below this corpus node)'}")
@@ -343,6 +400,22 @@ def main() -> None:
         raise RuntimeError("pilot aggregate mismatch:\n  " + "\n  ".join(failures))
     print()
     print("all pilot aggregate checks match")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    stream = io.StringIO()
+    with redirect_stdout(stream):
+        run()
+    report = stream.getvalue()
+    if args.check:
+        if report != OUTPUT.read_text(encoding="utf-8"):
+            raise SystemExit("output.txt is stale")
+        print("output.txt matches the pinned opening-decision pilot")
+    else:
+        print(report, end="")
 
 
 if __name__ == "__main__":

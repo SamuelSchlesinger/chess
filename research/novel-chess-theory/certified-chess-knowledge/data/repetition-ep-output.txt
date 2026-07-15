@@ -1,6 +1,12 @@
+oracle: chess==1.11.2
+declared sdist sha256: a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39
+engine repetition snapshot sha256: bef2dad2cf1d148aa6579406adf45bbb02c22cd15a0dfccaf0b5d1debbe2e679
+legal setup: 1.d4 e5 2.dxe5 Nf6 3.e4 Nxe4 4.Nf3 Nc5 5.Nc3 g6 6.Bf4 Bg7 7.Qd2 O-O 8.h3 Re8 9.a3 d5
+anchor FEN: rnbqr1k1/ppp2pbp/6p1/2npP3/5B2/P1N2N1P/1PPQ1PP1/R3KB1R w KQ d6 0 10
+repeated cycle (twice): f3g1 b8d7 g1f3 d7b8
 pseudo-legal en passant: yes
 legal en passant: no
-FIDE repetition keys equal: yes
-Polyglot hash with d3:    0xecba303cd610b817
-Polyglot hash without d3: 0xf023eeefeaa828b6
-Polyglot hashes equal: no
+anchor Polyglot hash:  0x726e654e9a671ec8
+current Polyglot hash: 0x6ef7bb9da6df8e69
+current FIDE-key occurrences: 3
+current Polyglot-hash occurrences: 2

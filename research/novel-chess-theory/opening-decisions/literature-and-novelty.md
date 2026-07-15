@@ -36,16 +36,17 @@ The candidate contribution is the conjunction of five choices:
 1. use complete FIDE states for legality and an exact, justified quotient for
    reusable position knowledge;
 2. keep route occurrences so alternatives before coalescence are not erased;
-3. compare move orders by finite opponent-deviation languages and robust risk;
+3. compare move orders by typed opponent-scenario failure sets and robust risk,
+   retaining route-local deviation languages only as diagnostics;
 4. optimize a prefix-consistent human repertoire for coverage, soundness, and
    cognitive cost;
 5. validate “compression” through delayed recall and transfer to unseen routes.
 
 The closest chess work optimizes engine opening books, predicts opening labels,
 or measures sequence knowledge. The scoped search found no primary source that
-defines route dominance by opponent-language inclusion, no transposition-
-adjusted empirical estimate of human repertoire burden, and no robust
-position-graph repertoire cover tested for human recall.
+defines route dominance by typed opponent-scenario failure-set inclusion, no
+transposition-adjusted empirical estimate of human repertoire burden, and no
+robust position-graph repertoire cover tested for human recall.
 
 This is enough to say **candidate novelty**, not “first ever.” Move-order
 avoidance is old practical chess knowledge, transpositions are classical, and
@@ -58,9 +59,10 @@ with tool authors.
 
 ### Defensible after the proposed experiments
 
-- A precise adversarial move-order dominance relation and proved laws.
-- The first reported exact-position versus history-card differential for a
-  declared repertoire corpus, if priority review holds.
+- A precise weak adversarial move-order preorder over typed opponent scenarios,
+  its strict part, and proved laws.
+- The first reported repetition-key versus history-decision-node differential
+  for a declared repertoire corpus, if priority review holds.
 - A held-out demonstration that one move order has lower supported deviation
   risk at equal endpoint value and study cost.
 - A randomized result showing that graph-based cards improve transfer per

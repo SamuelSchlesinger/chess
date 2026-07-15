@@ -1,9 +1,10 @@
 # Turning the relation basis into player knowledge
 
-The 205-relation basis can reduce duplicated opening study, but it cannot turn
-8,646 histories into 205 things to memorize. It compresses the *proof that
-routes merge*, not the chess content at 7,848 distinct positions. Player value
-requires three separate compression claims:
+The 205-relation rooted basis can organize duplicated opening study, but it
+cannot turn 8,646 catalog prefixes into 205 things to memorize. It compresses
+the concrete *proof that root routes merge* in one projected graph, not the
+chess content at 7,848 distinct positions. Player value requires three separate
+compression claims:
 
 1. **state deduplication:** schedule one next-move card per exact position,
    removing duplicate route occurrences;
@@ -12,8 +13,13 @@ requires three separate compression claims:
 3. **schema compression:** teach several basis equations as one reusable chess
    idea, such as “develop either knight around the same waiting move.”
 
-The corpus establishes (1) and the 205-chord theorem establishes (2). Whether
-(3) exists is the genuinely player-relevant empirical question.
+The corpus establishes only the structural opportunity behind (1): for
+observed decision prefixes, White has `3,091` history nodes versus `2,741`
+repetition-key nodes, while Black has `3,102` versus `2,736`. These are
+potential duplicate records, not yet scheduled cards or measured study time.
+The conditional 205-chord theorem establishes (2) for concrete root-path
+equations. Whether either saves human review after relation and deviation cards
+are added—and whether (3) exists—remains empirical.
 
 ## What the current trainer gets wrong
 
@@ -30,24 +36,40 @@ position index: exact opening key -> repertoire move, explanation, evaluations
 route index:    path prefix       -> deviations encountered before a merge
 ```
 
-The position key must use semantic equality—placement, turn, clean castling
+The position key must use semantic equality—placement, turn, historical castling
 rights, and effective en passant—with equality confirmation. A 64-bit
 Polyglot/Zobrist value is an efficient lookup accelerator, not an identity
 proof. The complete `Game` remains available for draw-rule history.
 
-Opening books as position DAGs are already established in computer-chess work
-[fishburn18][fishburn18]. The new point is to make the quotient visible in the
-learning model while preserving route-specific risks.
+Opening books as position DAGs are established in computer-chess work
+[fishburn18][fishburn18], and position-keyed transposition-aware training is
+already implemented by Chess Position Trainer [cpt14][cpt14] and advertised by
+GambitLab [gambitlab26][gambitlab26]. The experimental point here is narrower:
+add explicit minimum-basis relation and route-deviation prompts, then test them
+against a strong position-keyed baseline.
 
 ## What can safely be merged
 
-Once two opening routes reach the same exact position, their legal moves and
-ordinary position evaluation agree. A repertoire answer at that node should
-therefore be one **node card**, regardless of opening name or incoming move
-order. On the pinned catalog this removes 798 duplicate history occurrences,
-a 9.2% reduction from 8,646 history cards to 7,848 position cards.
+Once two opening routes reach the same exact repetition position, their legal
+moves agree. Any annotation or static evaluation proved to factor through that
+key can therefore be shared in one **node record**, regardless of opening name
+or incoming move order. Evaluations that depend on the half-move clock,
+repetition history, or route-conditioned evidence require a richer key. On the
+pinned catalog, the broad quotient removes 798 duplicate prefix occurrences,
+but those prefixes are not player cards.
 
-That figure is a property of a sparse name catalog, not a forecast for a
+The corpus-relative decision-node opportunity is the more relevant quantity:
+
+| Learner side | History decision nodes | Repetition-key decision nodes | Structural reduction |
+|---|---:|---:|---:|
+| White | 3,091 | 2,741 | 350 (11.32%) |
+| Black | 3,102 | 2,736 | 366 (11.80%) |
+
+Even these are database-node counts. Actual savings must be recomputed after
+instantiating node, relation, and deviation review records and measuring their
+time cost.
+
+Those figures are properties of a sparse name catalog, not forecasts for a
 personal repertoire. A system opening with many interchangeable development
 orders may compress more; a forcing repertoire may compress less.
 
@@ -73,9 +95,11 @@ Show two short tails from their last common prefix and ask:
 - if so, which familiar position is it?
 - which move completes the transposition?
 
-Use the 205 chord equations as the candidate pool. Begin with the 84 direct
-alternating braids, then the 54 additional relations having at most five plies
-per side beyond the 86 very short relations.
+Use the 205 chord equations as the candidate pool, but keep the buckets
+disjoint: begin with 84 direct alternating braids at most three plies per side;
+then the two other relations at most three plies per side; then 52 relations
+with four or five plies per side. The remaining 67 are longer and should not
+enter a player curriculum without a separate explanation.
 
 ### 3. Move-order contrast
 
@@ -87,8 +111,10 @@ frequency belong on this card; endpoint equality alone does not rank routes.
 
 ### 4. Substitution and detour diagnosis
 
-Reserve the four non-permutation basis equations for explicit contrastive
-study. Ask the learner to identify:
+Reserve the four syntactic non-permutation candidates (`R032`, `R100`, `R142`,
+and `R164` in the certificate) for explicit human classification before study.
+Once the proposed route-substitution or detour account has been checked by a
+strong player, ask the learner to identify:
 
 - which piece took a different route;
 - which forcing move made the route coalesce;
@@ -101,20 +127,25 @@ the entire SAN sequence again.
 ## A human-readable canonical repertoire
 
 The lexicographically least shortest-path arborescence is a reproducible
-mathematical baseline, not the right personal backbone. Choose canonical paths
-to minimize a weighted learning cost:
+mathematical baseline, not automatically the right personal backbone. A future
+optimizer should choose the *whole arborescence* to minimize a declared global
+review objective; choosing a locally cheap incoming edge at each node need not
+minimize the lengths or explanations of all induced chord relations. Candidate
+features include:
 
 ```text
-route cost = personal unfamiliarity
-           + opponent frequency
-           + tactical punishment for forgetting
-           + explanation length
+review cost = personal unfamiliarity
+            + expected error consequence
+            + explanation length
+            - encounter-value benefit.
 ```
 
-For a fixed backbone, every non-tree edge becomes a relation card into a
-canonical position. Changing the arborescence leaves the minimum count 205 but
-changes which equations are short and recognizable. The optimization target
-should therefore be review burden, not relation count.
+For a fixed backbone, every non-tree edge becomes a relation candidate into a
+canonical position. Changing the arborescence leaves the concrete minimum count
+205 but changes which equations are short and recognizable. Any optimization
+claim must specify the objective, constraints, and algorithm and report
+sensitivity to the selected backbone. The target should be measured review
+burden, not relation count.
 
 A concise human guide generated from the graph should present:
 
@@ -157,35 +188,51 @@ Simon's chess experiments support the importance of structured positional
 chunks [chase73][chase73], but do not validate this particular quotient. Those
 sources motivate an experiment rather than substitute for one.
 
-## Small controlled trial in the existing workflow
+## Two-stage evaluation in the existing workflow
+
+### Stage A: 30-position N-of-1 feasibility pilot
 
 Build a 30-position personal micro-repertoire with at least ten
-transpositions. Randomly assign matched items to:
+transpositions. Partition it by **disjoint transposition component**, so two
+conditions never expose the same endpoint or a relation that teaches another
+condition's held-out route. Counterbalance opening families and assign matched
+components to:
 
 - **sequence condition:** ordinary exact-prefix next-move cards;
 - **node condition:** position-keyed cards with incoming routes randomized;
 - **relation condition:** node cards plus a short relation/deviation prompt.
 
-Use the same scheduler and review budget for four weeks. Test:
+Use the same scheduler and review-time budget for four weeks. Preregister one
+primary feasibility outcome—successful unseen-route presentation without key,
+scheduling, or content errors—and report next-move recall, deviation
+recognition, review count, seconds, and route mistakes descriptively. Subsequent
+game quality is exploratory. With roughly ten items per condition and one
+learner, absence of a performance difference is **not** a falsifier and supports
+no population-level claim. This stage can reject unusable plumbing or exercises,
+not the cognitive hypothesis.
 
-1. next-move recall through a trained route;
-2. next-move recall through an unseen legal transposition;
-3. recognition of an opponent deviation before the merge;
-4. move quality in the user's subsequent games;
-5. reviews and seconds required per retained item.
+### Stage B: controlled effect study
 
-The decisive metric is transfer to unseen move orders, not immediate rehearsal
-accuracy. A relation-aware trainer is valuable if it reduces review burden or
-improves transfer without increasing route mistakes. If it only makes the
-backend cleaner, keep the graph representation and hide the algebra from the
-player.
+If Stage A works, power a repeated-measures study from a declared smallest
+effect on one primary outcome: delayed next-move recall through an unseen legal
+transposition. Use transposition components as assignment clusters, prevent
+cross-condition endpoint overlap, counterbalance condition order and opening
+family, preserve an untouched unseen-route test, and preregister the participant
+count, analysis model, multiplicity policy, and missing-data handling.
+
+The main comparison is **position-keyed node review versus node review plus
+relation/deviation prompts**, because position-keyed training already exists.
+Exact-prefix drilling may remain a secondary implementation baseline. A
+relation-aware trainer is useful only if it reduces review burden or improves
+transfer without increasing route mistakes. If it only makes the backend
+cleaner, keep the graph representation and hide the algebra from the player.
 
 ## Practical recommendation toward a 2000-level repertoire
 
 Use the algebra as infrastructure, not as the syllabus. For a player working
 toward roughly 2000:
 
-- deduplicate position cards immediately;
+- index endpoint-invariant node records by exact repetition key immediately;
 - expose only short, frequent, high-consequence relation cards;
 - prioritize deviations found in the player's own games over obscure named
   catalog routes;
@@ -195,18 +242,16 @@ toward roughly 2000:
 - measure whether relation cards transfer before expanding beyond the
   micro-repertoire.
 
-This is the highest-value route from a formal path theorem to stronger chess:
-less duplicate memorization, more recognition of shared positions, and exact
-warnings about where move orders stop being interchangeable.
+This is the most defensible hypothesis connecting the rooted path theorem to
+stronger chess: potentially less duplicate review, more recognition of shared
+positions, and exact warnings about where move orders stop being
+interchangeable. Only the staged evaluation can establish the player benefit.
 
 ## Local References
 
-- <a id="butler10"></a> **butler10** — Andrew C. Butler, “Repeated Testing Produces Superior Transfer of Learning Relative to Repeated Studying,” *Journal of Experimental Psychology: Learning, Memory, and Cognition* 36(5), 2010, pp. 1118–1133. [DOI](https://doi.org/10.1037/a0019902).
-- <a id="cepeda06"></a> **cepeda06** — Nicholas J. Cepeda, Harold Pashler, Edward Vul, John T. Wixted, and Doug Rohrer, “Distributed Practice in Verbal Recall Tasks: A Review and Quantitative Synthesis,” *Psychological Bulletin* 132(3), 2006, pp. 354–380. [DOI](https://doi.org/10.1037/0033-2909.132.3.354).
-- <a id="chase73"></a> **chase73** — William G. Chase and Herbert A. Simon, “Perception in Chess,” *Cognitive Psychology* 4(1), 1973, pp. 55–81. [DOI](https://doi.org/10.1016/0010-0285(73)90004-2).
-- <a id="fishburn18"></a> **fishburn18** — John P. Fishburn, “Search-Based Opening Book Construction,” *ICGA Journal* 40(1), 2018, pp. 2–14. [DOI](https://doi.org/10.3233/ICG-180039).
-
-[butler10]: https://doi.org/10.1037/a0019902
-[cepeda06]: https://doi.org/10.1037/0033-2909.132.3.354
-[chase73]: https://doi.org/10.1016/0010-0285(73)90004-2
-[fishburn18]: https://doi.org/10.3233/ICG-180039
+[butler10]: sources.md#butler10
+[cepeda06]: sources.md#cepeda06
+[chase73]: sources.md#chase73
+[cpt14]: sources.md#cpt14
+[fishburn18]: sources.md#fishburn18
+[gambitlab26]: sources.md#gambitlab26

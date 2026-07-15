@@ -23,10 +23,16 @@ by the source.
 ### Explainable chess knowledge and formal strategy
 
 - [Michael Bain and Stephen Muggleton, “Learning Optimal Chess Strategies,” *Machine Intelligence 13*, 1994, 291–309](https://doi.org/10.1093/oso/9780198538509.003.0012) — Establishes inductive rule learning from move-perfect KRK data, so generic rule extraction is not novel.
-- [Matej Guid, Martin Možina, Aleksander Sadikov, and Ivan Bratko, “Deriving Concepts and Strategies from Chess Tablebases,” *Advances in Computer Games*, LNCS 6048, 2010, 195–207](https://doi.org/10.1007/978-3-642-12993-3_18) — Derives a human-facing KBNK strategy and supplies the closest baseline for tablebase-to-teaching work.
+- [Israel S. Herschberg, H. Jaap van den Herik, and Peter N. A. Schoo, “Verifying and Codifying Strategies in the KNNKP(h) Endgame,” *ICCA Journal* 12(3), 1989, 144–154](https://doi.org/10.3233/ICG-1989-12304) — Direct precedent for using a tablebase to verify and codify human endgame statements.
+- [Peter Jansen, “KQKR: Assessing the Utility of Heuristics,” *ICCA Journal* 15(4), 1992, 179–191](https://doi.org/10.3233/ICG-1992-15402) — Direct precedent for evaluating player-facing endgame heuristics rather than merely producing optimal moves.
+- [Matej Guid, Martin Možina, Aleksander Sadikov, and Ivan Bratko, “Deriving Concepts and Strategies from Chess Tablebases,” *Advances in Computer Games*, LNCS 6048, 2010, 195–207](https://doi.org/10.1007/978-3-642-12993-3_18) — Iteratively presents KBNK tablebase counterexamples to an expert and repairs rule preconditions or goals, making counterexample-and-repair itself prior art.
 - [Filip Marić, Predrag Janičić, and Marko Maliković, “Proving Correctness of a KRK Chess Endgame Strategy by Using Isabelle/HOL and Z3,” CADE-25, 2015, 256–271](https://doi.org/10.1007/978-3-319-21401-6_17) — Proves a complete executable KRK strategy, ruling out standard KRK formalization as a novelty claim.
 - [Marko Maliković, “A Formal System for Automated Reasoning about Retrograde Chess Problems Using Coq,” CECIIS, 2008](https://archive.ceciis.foi.hr/index.php/ceciis/2008/paper/view/174.html) — Early chess-specific proof-assistant precedent for retrograde problems.
-- [Lisa Schut et al., “Bridging the Human–AI Knowledge Gap through Concept Discovery and Transfer in AlphaZero,” *PNAS* 122(13), 2025, e2406675122](https://doi.org/10.1073/pnas.2406675122) — Demonstrates machine-discovered chess concept transfer to elite human players, but not an exact formal theorem pipeline.
+- [Lisa Schut et al., “Bridging the Human–AI Knowledge Gap through Concept Discovery and Transfer in AlphaZero,” *PNAS* 122(13), 2025, e2406675122](https://doi.org/10.1073/pnas.2406675122) — Reports a preliminary four-grandmaster transfer study and explicitly discusses possible priming and difficulty confounds; it is not an exact formal theorem pipeline.
+
+### Executable oracle provenance
+
+- Niklas Fiekas, [`python-chess` v1.11.2 release](https://github.com/niklasf/python-chess/releases/tag/v1.11.2), 25 February 2025, and pinned [`chess/polyglot.py`](https://github.com/niklasf/python-chess/blob/v1.11.2/chess/polyglot.py) — Source for the executable Polyglot oracle; it states that legality of a potential en-passant capture is irrelevant. Validation records `chess-1.11.2.tar.gz` SHA-256 `a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39`.
 
 ### Search and certificates
 
@@ -44,6 +50,8 @@ by the source.
 - [`Chess/RepetitionKey.lean`](../../../Chess/RepetitionKey.lean), local formalization snapshot inspected 14 July 2026 — Proves exact executable key equality equivalent to the modeled FIDE repetition relation.
 - [`Chess/Theory/PawnGeometry.lean`](../../../Chess/Theory/PawnGeometry.lean), local formalization snapshot inspected 14 July 2026 — Supplies the geometric pawn-square control theorem and explicitly states what a later KPK classification must add.
 - [`engine/src/board.rs`](../../../engine/src/board.rs), imported Rust snapshot inspected 14 July 2026 — Defines the Polyglot-compatible board hash and adjacent-pawn en-passant contribution.
-- [`engine/src/game.rs`](../../../engine/src/game.rs), imported Rust snapshot inspected 14 July 2026 — Reuses board hashes for repetition counting and game outcomes.
-- [`engine/src/search.rs`](../../../engine/src/search.rs), imported Rust snapshot inspected 14 July 2026 — Reuses the same keys for search-path repetition detection.
+- [`engine/src/repetition.rs`](../../../engine/src/repetition.rs), working-tree snapshot inspected 14 July 2026 — Defines collision-free structural repetition identity from placement, turn, castling rights, and legally effective en passant.
+- [`engine/src/game.rs`](../../../engine/src/game.rs), working-tree snapshot inspected 14 July 2026 — Stores structural repetition keys and counts exact equality for game outcomes.
+- [`engine/src/search.rs`](../../../engine/src/search.rs), working-tree snapshot inspected 14 July 2026 — Stores the same structural keys while deliberately treating one matching ancestor as an internal twofold search heuristic.
+- [`engine/tests/repetition.rs`](../../../engine/tests/repetition.rs), working-tree snapshot inspected 14 July 2026 — Replays the full-start pinned-en-passant history and asserts exact count 3 versus simulated legacy Polyglot count 2.
 - [`engine/src/bin/chess-trainer`](../../../engine/src/bin/chess-trainer), imported Rust snapshot inspected 14 July 2026 — Provides the current opening-book, UCI grading, short-rep, and session-statistics delivery layer.

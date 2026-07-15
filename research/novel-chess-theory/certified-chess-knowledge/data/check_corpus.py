@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check navigation, local links, and citation hygiene for this branch."""
+"""Check navigation, local links, and citation hygiene for the research corpus."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from pathlib import Path
 from urllib.parse import unquote
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
+CERTIFIED_ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "index.md"
 INLINE_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 REFERENCE_DEF = re.compile(r"^\[([a-zA-Z0-9._-]+)\]:\s+(\S+)", re.MULTILINE)
@@ -42,7 +43,9 @@ def main() -> None:
         for key in sorted(cited):
             if key not in definitions:
                 failures.append(f"{path.relative_to(ROOT)}: undefined citation {key}")
-            if not re.search(rf"^- \*\*{re.escape(key)}\*\*\s+—", text, re.MULTILINE):
+            if path.is_relative_to(CERTIFIED_ROOT) and not re.search(
+                rf"^- \*\*{re.escape(key)}\*\*\s+—", text, re.MULTILINE
+            ):
                 failures.append(
                     f"{path.relative_to(ROOT)}: no full Local References entry for {key}"
                 )
@@ -78,6 +81,7 @@ def main() -> None:
     print(f"markdown documents reachable: {len(markdown)}")
     print(f"local link targets checked: {checked_links}")
     print(f"inline citations checked: {citations}")
+    print("external citation targets checked: no (syntax and local entries only)")
 
 
 if __name__ == "__main__":

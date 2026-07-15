@@ -3,56 +3,56 @@ input SHA-256: fd710d16bf5cdd750a565ee1a6aba19eb2c7db7d74d7df961f6e00fb1cd04a6e
 histories: 8646
 exact repetition positions: 7848
 
-decision-card compression (corpus-relative)
-  White: 3091 history cards -> 2741 position cards; save 350 (11.32%)
-  Black: 3102 history cards -> 2736 position cards; save 366 (11.80%)
+decision-node quotient (corpus-relative)
+  White: 3091 history decision nodes -> 2741 repetition-key decision nodes; duplicate-key differential 350 (11.32%)
+  Black: 3102 history decision nodes -> 2736 repetition-key decision nodes; duplicate-key differential 366 (11.80%)
 
-same-target route comparisons under identical recorded replies
-  White: 270 controllable pairs; catalog-count differs in 247; legal-count differs in 32; strict catalog-outcome inclusion in 41
-  Black: 265 controllable pairs; catalog-count differs in 220; legal-count differs in 98; strict catalog-outcome inclusion in 46
+same-repetition-key-endpoint history comparisons under identical opponent UCI projection
+  White: 270 projection-matched pairs; summed catalog branch incidences differ in 247; summed legal branch incidences differ in 32
+  Black: 265 projection-matched pairs; summed catalog branch incidences differ in 220; summed legal branch incidences differ in 98
 
 largest curated branch-exposure contrasts
   White
-    catalog 2 vs 24; legal 47 vs 47
+    catalog incidences 2 vs 24; legal incidences 47 vs 47
       A: 1.f3 e5 2.e4 Nf6 3.Bc4
       B: 1.e4 e5 2.Bc4 Nf6 3.f3
-    catalog 2 vs 18; legal 47 vs 47
+    catalog incidences 2 vs 18; legal incidences 47 vs 47
       A: 1.f3 e5 2.e4 Nf6
       B: 1.e4 e5 2.f3 Nf6
-    catalog 2 vs 18; legal 19 vs 19
+    catalog incidences 2 vs 18; legal incidences 19 vs 19
       A: 1.f3 e5 2.e4
       B: 1.e4 e5 2.f3
   Black
-    catalog 39 vs 20; legal 173 vs 173
+    catalog incidences 39 vs 20; legal incidences 173 vs 173
       A: 1.d4 Nf6 2.c4 e6 3.Nf3 d5 4.g3 Be7 5.Bg2 O-O 6.O-O
       B: 1.d4 e6 2.c4 Nf6 3.Nf3 d5 4.g3 Be7 5.Bg2 O-O 6.O-O
-    catalog 39 vs 20; legal 138 vs 138
+    catalog incidences 39 vs 20; legal incidences 138 vs 138
       A: 1.d4 Nf6 2.c4 e6 3.Nf3 d5 4.g3 Be7 5.Bg2 O-O
       B: 1.d4 e6 2.c4 Nf6 3.Nf3 d5 4.g3 Be7 5.Bg2 O-O
-    catalog 39 vs 20; legal 138 vs 138
+    catalog incidences 39 vs 20; legal incidences 138 vs 138
       A: 1.d4 Nf6 2.c4 e6 3.Nf3 d5 4.g3 Be7 5.Bg2
       B: 1.d4 e6 2.c4 Nf6 3.Nf3 d5 4.g3 Be7 5.Bg2
 
-top structural transposition hubs
-  score=577, routes=2, downstream named endpoints=577: 1.c4 Nf6 2.d4
+top taxonomy transposition hubs
+  score=577, routes=2, downstream terminal histories=577: 1.c4 Nf6 2.d4
     Benko Gambit; Benko Gambit Accepted; Benko Gambit Accepted: Central Storming Variation; ...
-  score=516, routes=7, downstream named endpoints=86: 1.d4 d5 2.c4 e6 3.Nf3 Nf6
+  score=516, routes=7, downstream terminal histories=86: 1.d4 d5 2.c4 e6 3.Nf3 Nf6
     Bogo-Indian Defense: Retreat Variation; Catalan Opening: Closed; Catalan Opening: Closed Variation, Traditional Variation; ...
-  score=355, routes=6, downstream named endpoints=71: 1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Nf3
+  score=355, routes=6, downstream terminal histories=71: 1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Nf3
     Queen's Gambit Accepted; Queen's Gambit Declined; Queen's Gambit Declined: Anti-Tartakower Variation; ...
-  score=308, routes=3, downstream named endpoints=154: 1.d4 e6 2.c4 Nf6 3.Nf3
+  score=308, routes=3, downstream terminal histories=154: 1.d4 e6 2.c4 Nf6 3.Nf3
     Benoni Defense; Benoni Defense: Classical Variation; Benoni Defense: Classical Variation, Argentine Counterattack; ...
-  score=304, routes=2, downstream named endpoints=304: 1.d4 e6 2.c4 Nf6
+  score=304, routes=2, downstream terminal histories=304: 1.d4 e6 2.c4 Nf6
     Benoni Defense; Benoni Defense: Classical Variation; Benoni Defense: Classical Variation, Argentine Counterattack; ...
-  score=301, routes=8, downstream named endpoints=43: 1.d4 d5 2.c4 c6 3.Nc3 Nf6 4.e3 e6 5.Nf3
+  score=301, routes=8, downstream terminal histories=43: 1.d4 d5 2.c4 c6 3.Nc3 Nf6 4.e3 e6 5.Nf3
     Semi-Slav Defense: Accelerated Meran Variation; Semi-Slav Defense: Bogoljubow Variation; Semi-Slav Defense: Chigorin Defense; ...
-  score=270, routes=7, downstream named endpoints=45: 1.d4 d5 2.c4 e6 3.Nc3 Be7 4.Nf3 Nf6
+  score=270, routes=7, downstream terminal histories=45: 1.d4 d5 2.c4 e6 3.Nc3 Be7 4.Nf3 Nf6
     Queen's Gambit Declined: Anti-Tartakower Variation; Queen's Gambit Declined: Anti-Tartakower Variation, Petrosian Variation; Queen's Gambit Declined: Harrwitz Attack; ...
-  score=266, routes=8, downstream named endpoints=38: 1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Be7 5.e3 Nbd7 6.Nf3 O-O
+  score=266, routes=8, downstream terminal histories=38: 1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Be7 5.e3 Nbd7 6.Nf3 O-O
     Queen's Gambit Declined: Orthodox Defense; Queen's Gambit Declined: Orthodox Defense, Alekhine Variation; Queen's Gambit Declined: Orthodox Defense, Bd3 Line; ...
-  score=252, routes=7, downstream named endpoints=42: 1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Be7 5.e3 O-O 6.Nf3
+  score=252, routes=7, downstream terminal histories=42: 1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Be7 5.e3 O-O 6.Nf3
     Queen's Gambit Declined: Anti-Tartakower Variation; Queen's Gambit Declined: Lasker Defense, Bernstein Variation, Mar del Plata Gambit; Queen's Gambit Declined: Lasker Defense, Russian Variation; ...
-  score=234, routes=7, downstream named endpoints=39: 1.d4 d5 2.c4 c6 3.Nc3 Nf6 4.e3 e6 5.Nf3 Nbd7
+  score=234, routes=7, downstream terminal histories=39: 1.d4 d5 2.c4 c6 3.Nc3 Nf6 4.e3 e6 5.Nf3 Nbd7
     Semi-Slav Defense: Bogoljubow Variation; Semi-Slav Defense: Chigorin Defense; Semi-Slav Defense: Main Line; ...
 
 all pilot aggregate checks match

@@ -16,6 +16,12 @@ gate.
 Gate: every shared fixture has identical position identity and legal moves in
 Lean and Rust; the pinned illegal-en-passant repetition counterexample passes.
 
+Current status: structural FIDE repetition identity, the full legal-history
+counterexample, shared perft positions, selected move legality, trace endpoints,
+and opening-pair projections are implemented in both stacks. The gate remains
+open because the fixture runner does not yet compare the complete legal-move set
+from every shared position across Lean and Rust.
+
 ## 2. Player baseline and concise guide
 
 - Import the player's recent rapid/classical games and establish a reproducible

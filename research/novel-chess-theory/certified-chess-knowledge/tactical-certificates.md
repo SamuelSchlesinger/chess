@@ -18,9 +18,50 @@ A principal variation is not such a certificate.  Replaying one line proves
 only that one cooperative continuation mates.  Every defender node must show
 that the certificate covers *exactly all* legal replies.
 
+## Force relations before certificates
+
+Fix an attacker color `A` and a remaining ply budget `n`. Define the semantic
+relations without mentioning a certificate.
+
+`PositionTreeForce A n p` deliberately forgets `p`'s halfmove and fullmove
+clocks and has no prior history. Checkmate is success exactly when the mated
+side is `A.other`; stalemate and budget exhaustion are failure. At a
+nonterminal node with positive budget, an `A` node succeeds when some legal
+move succeeds recursively, while an `A.other` node succeeds only when every
+legal move succeeds. Repetition, 50/75-move rules, and claims do not exist in
+this puzzle convention. Dead position need not be an executable terminal test:
+an accepted legal path to checkmate itself contradicts `DeadPosition`.
+
+`FIDEForce A n s` instead consumes a complete `GameState`. Its terminal order
+is fixed:
+
+1. current checkmate succeeds exactly when the mated side is `A.other`; a
+   checkmate of `A` fails;
+2. otherwise stalemate, semantic dead position, fivefold repetition, or the
+   75-move limit fails as an automatic draw;
+3. otherwise play continues if the budget is positive.
+
+This gives checkmate precedence over a simultaneous 75-move threshold, matching
+the repository definition and FIDE [fide2023][fide2023]. At attacker nodes,
+`A` may decline a claim and choose one legal move. At defender nodes, the
+universal response type is:
+
+```text
+play(move)       where Legal current move
+claim-now        where DrawClaimAvailable state
+claim-after(move) where DrawClaimAvailableAfter state move
+```
+
+Either claim action ends the branch as a draw, so a forced-mate witness cannot
+exist when the defender has one. `claim-after` covers both an announced move
+that creates a third occurrence and one that reaches the 50-move threshold.
+Automatic draws created by an ordinary move are caught at the next recursive
+state. This relation distinguishes an exact FIDE force claim from search's
+internal repetition heuristics.
+
 ## Certificate shape
 
-An initial inductive design is:
+Only after those relations are fixed, use the inductive strategy object:
 
 ```text
 mate
@@ -28,35 +69,31 @@ attacker(move, child)
 defender([(move_1, child_1), ..., (move_k, child_k)])
 ```
 
-The checker is parameterized by a remaining ply budget and a `GameState`.
+The checker is parameterized by the semantic mode, attacker, remaining ply
+budget, and either a `Position` or `GameState`.
 
-- `mate` succeeds exactly when `Chess.Checkmate state.current` holds.
+- `mate` succeeds exactly for checkmate by the declared attacker.
 - `attacker` requires a legal move, decrements the budget, and checks its child.
 - `defender` compares the listed moves extensionally with
   `Chess.legalMoves state.current`, rejects duplicates, and checks every child.
-- a non-mate terminal draw rejects a forced-mate certificate.
+- position-tree mode rejects stalemate; FIDE mode additionally checks the
+  decidable automatic conditions and rejects any `claim-now` or `claim-after`
+  defense action. Semantic deadness is discharged in the soundness proof below.
 
 The crucial soundness theorem says that checker success implies the bounded
 force relation defined independently of the certificate.  Completeness is a
 later convenience theorem; soundness is the trust boundary.
 
-The current repository already has the right primitives: `Legal`,
-`legalMoves`, `applyUnchecked`, `GameState.afterMove`, `Checkmate`, claimable
-draws, and automatic draws [local-game][local-game] [local-rules][local-rules].
-The first control can reuse the existing Fool's Mate replay, but the
-discriminating test must be a mate-in-two or deeper with multiple defenses.
+The current repository has `Legal`, `legalMoves`, `applyUnchecked`,
+`GameState.afterMove`, `Checkmate`, both claim forms, and automatic-draw
+semantics [local-game][local-game] [local-rules][local-rules]. Its
+`DeadPosition` is a semantic proposition, not an executable Boolean. The first
+checker therefore does not pretend to decide it: from each accepted subtree,
+the soundness proof extracts a legal continuation ending in checkmate and thus
+proves that every visited position is not dead. A later supported-domain
+dead-position decider would be a separate certified component.
 
-## Draw and identity semantics
-
-There should be two different claim types rather than one ambiguous “mate in
-`n`”:
-
-1. **Position-tree mate:** board rules, checkmate, and stalemate, but no prior
-   repetition history.  This is suitable for many puzzle conventions.
-2. **FIDE forced mate:** a complete `GameState`; the defender may take a valid
-   threefold or 50-move claim, and automatic fivefold/75-move draws terminate
-   the branch.  Checkmate still has the precedence specified by FIDE
-   [fide2023][fide2023].
+## Identity semantics
 
 A memoized certificate DAG must use an identity adequate for the claim.  The
 formal `RepetitionKey` is exact for position-level repetition identity, but two
@@ -64,9 +101,11 @@ nodes with the same current position can have different repetition counts.  A
 history-sensitive proof therefore cannot merge them merely because their board
 keys agree.
 
-This matters immediately for integration.  The Rust workflow's Polyglot hash is
-not the exact FIDE key in a pinned en-passant position; the worked mismatch and
-training drill are documented in [the trainer bridge](training-integration.md).
+This matters immediately for integration. The Rust engine now uses an exact
+structural repetition record rather than its Polyglot hash for game and search
+history; the legal-history regression and training drill are documented in
+[the trainer bridge](training-integration.md). Even so, equal current keys do
+not justify merging histories with different claim availability.
 
 ## Smallest decisive pilot
 
@@ -74,10 +113,15 @@ training drill are documented in [the trainer bridge](training-integration.md).
 2. Produce a complete certificate with an untrusted depth-first or
    proof-number search.
 3. Check it in Lean and prove the checker sound once.
-4. Apply three mutations and require rejection: delete one defense, substitute
-   an illegal move, and claim mate one ply early.
-5. Export the root FEN, accepted first move or moves, SAN explanation, semantic
-   mode, and certificate digest as a trainer item.
+4. Apply five mutations and require rejection: delete one legal defense,
+   substitute an illegal move, claim mate one ply early, replace the history by
+   one with an at-state defender claim, and set a 99-ply halfmove clock where a
+   declared legal non-zeroing defense supports `claim-after`.
+5. Run both semantic modes and require the two claim mutations to affect only
+   FIDE mode.
+6. Export the root FEN, full history when required, accepted first move or
+   moves, SAN explanation, semantic mode, and certificate digest as a trainer
+   item.
 
 The route fails at this checkpoint if a deleted defense is accepted, the claim
 silently ignores draw rights, or the artifact is too large to inspect and cache

@@ -33,24 +33,56 @@ and have not removed illegal king placements or symmetries.  They explain why a
 four-piece motif can be feasible while a naive five-piece Lean enumeration can
 become the wrong first experiment.
 
-## Candidate pilot: tempo-sensitive KPKP corridor
+## Frozen pilot v0: tempo-sensitive KPKP corridor
 
-Start with exactly two kings and one pawn per side, no castling or en-passant
-right, halfmove clock zero, and a declared pair of pawn files.  Remove positions
-with adjacent kings, impossible checks, immediate promotion, or captures that
-leave the declared family.  Quotient only by symmetries proved to preserve the
-target predicate.
+The pilot is fixed before any labels are queried:
+
+- **Root domain:** exactly two kings, a white pawn on `c2`–`c7`, and a black
+  pawn on `f2`–`f7`. Both side-to-move assignments must be legal: pieces occupy
+  distinct squares, kings are non-adjacent, and the side not to move is not in
+  check. Castling and en-passant rights are absent, the halfmove clock is 0,
+  and the fullmove number is 1. These are legal root compositions, not
+  positions proved reachable from the initial game. Successors may promote,
+  capture, or leave the root family; the oracle still evaluates the complete
+  continuation.
+- **Outcome semantics:** `WhiteOutcome∞ ∈ {win, draw, loss}` is normalized to
+  White's perspective under legal moves, checkmate, stalemate, and dead
+  position, with no repetition or move-count claims. DTZ and DTM are metadata,
+  not interchangeable labels.
+- **Symmetry:** only identity and 180-degree rotation combined with color swap
+  are quotiented. This maps the c/f file pair and White-normalized outcome back
+  to themselves. The lexicographically smaller effective four-field EPD is the
+  canonical root.
+- **Initial hypothesis:** `H₀(p) := |(8 - rank(whitePawn)) -
+  (rank(blackPawn) - 1)| ≤ 1`. It predicts a tempo flip from pawn promotion
+  deadlines alone and intentionally ignores both kings.
+- **Counterexample order:** canonical roots are ordered by white-pawn rank,
+  black-pawn rank, white-king index, black-king index, then canonical EPD, with
+  `a1 = 0` through `h8 = 63`.
 
 Classify:
 
 ```text
-TempoFlip(p) := WDL(p with White to move) != WDL(p with Black to move)
+TempoFlip(p) :=
+  WhiteOutcome∞(p with White to move) !=
+  WhiteOutcome∞(p with Black to move)
 ```
 
-Then search for a short equivalent formula using only player-facing features:
-king distances to capture and promotion squares, opposition/parity, pawn
-protection, and move order.  The first checkpoint is one fixed-file corridor,
+The repair grammar permits Boolean tests for direct or distant opposition, pawn
+protection, and side-independent parity, plus comparisons among Chebyshev king
+distances to either pawn, its front square, capture squares, or promotion
+square. Integer offsets are restricted to `{-1, 0, 1}`. The final formula must
+be a disjunction of at most four conjunctions of at most three literals, with
+no square- or position-ID exceptions. The first checkpoint is this file pair,
 not all KPKP.
+
+Canonical EPDs whose SHA-256 first byte is `0..204` form the discovery stratum;
+`205..255` form an untouched transfer stratum. The generator, split manifest,
+initial `H₀`, and pinned oracle provenance are written before repair. `H*` is
+frozen after discovery and evaluated on transfer exactly once. Only then may an
+exhaustive Lean certificate check the complete domain; that proof establishes
+exactness but does not retroactively turn a failed held-out result into evidence
+of cognitive simplicity.
 
 This target is intentionally provisional.  Six-man zugzwangs have already
 been systematically mined [bleicher-haworth2010][bleicher-haworth2010], and
@@ -79,22 +111,33 @@ external tablebase as an independent cross-check rather than the sole premise.
 
 ## Falsification protocol
 
-The pilot succeeds only if:
+The computational pilot succeeds only if:
 
 - independent enumeration and tablebase labels agree under the same WDL/clock
   semantics;
 - a deterministic canonical order reproduces the first counterexample to each
   candidate formula;
 - the final predicate has no exceptions in the entire declared corridor;
-- held-out symmetry/feature strata can be solved by players from the rule;
+- the frozen formula attains at least 95% accuracy on the untouched stratum;
 - Lean checks both the family boundary and the classifier.
 
-Stop if the rule grows by one ad hoc clause per counterexample, if the family
-boundary excludes the positions players care about, or if the result is already
-implicit in a published strategy.  Also stop if “proof” means trusting one
-opaque label file without verifying its recurrence conditions; opaque large
+Stop if no formula within four three-literal clauses is exact on the complete
+domain, if the family boundary excludes the positions players care about, or if
+the result is already implicit in a published strategy. Also stop if “proof”
+means trusting one opaque label file without verifying its recurrence
+conditions; opaque large
 computations are known to require explicit data assurance
 [hurd-haworth2010][hurd-haworth2010].
+
+The human gate is also fixed in advance: recruit 24 adult players with a
+published online rapid rating of 1400–2200, randomize rule cards and a
+time-matched ordinary explanation within player, and test 32 unseen transfer
+positions seven days later without feedback. The primary outcome is paired
+first-attempt boundary-judgment accuracy. The player-usefulness claim fails
+unless the repaired-rule condition improves mean accuracy by at least ten
+percentage points and a participant-clustered 95% bootstrap interval excludes
+zero. Response time and move choice are secondary and cannot rescue that
+failure.
 
 ## Training export
 

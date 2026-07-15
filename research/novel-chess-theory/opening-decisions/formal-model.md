@@ -57,31 +57,56 @@ The policy and scope induce a finite alternating game, an ordinary extensive-
 form object [kuhn53][kuhn53]. Its paths retain complete move-order provenance
 even when endpoints are later projected into `K`.
 
-## 3. Prepared corridors and deviation languages
+## 3. Prepared corridors, local words, and common scenarios
 
-A **prepared corridor** `C` is a finite, prefix-closed set of legal histories
-from `s0`. At our turns, the corridor follows `pi`; at opponent turns it
-branches over the covered moves in `A`. Let `T` be an acceptable target set,
-such as a collection of exact positions with attached plans.
+For each policy `pi`, a **prepared corridor** `C_pi` is a finite,
+prefix-closed set of legal histories from `s0`. At our turns, `C_pi` follows
+`pi`; at opponent turns it branches over the covered moves in `A`. Corridors
+must be indexed by policy because two move orders normally contain different
+own-move histories. Let `T` be an acceptable target set, such as a collection
+of exact positions with attached plans.
 
-For a deterministic policy, project a play onto the opponent's moves. This
-makes move orders with different *own* moves comparable. Define:
+For one fixed policy, projecting a play onto the opponent's moves gives useful
+route-local diagnostics:
 
 ```text
-LegalOpp(pi, H)       opponent move words legal against pi through H
-Exit(pi, C, H)        words whose induced play first leaves C
-Unsafe(pi, tau, H)    words whose induced play reaches declared evidence score < tau
-Miss(pi, C, tau, H)   Exit union Unsafe
+LegalOppWord(pi, H)       opponent UCI words legal against pi through H
+ExitWord(pi, C_pi, H)     local words whose induced play first leaves C_pi
+UnsafeWord(pi, tau, H)    local words reaching declared evidence score < tau
 ```
 
-These are finite languages. `Exit` measures preparation failure; `Unsafe`
-measures chess failure. They must not be conflated: an unfamiliar move can be
-harmless, and a heavily memorized line can be bad.
+These are finite languages, but languages from different policies are not
+silently compared. Their legal alphabets depend on the states each policy
+visits; the same UCI token can occur in different states, and a token can be
+legal on only one route.
 
-The corpus pilot uses only a one-deviation approximation: at each recorded
-opponent node, collect alternative child positions present in the taxonomy.
-The production experiment should construct the full bounded language from game
-and engine data.
+Cross-policy comparison instead fixes a finite, typed scenario space `Omega`.
+One strong and unambiguous choice is a set of complete opponent policies over
+the union of nonterminal opponent states reachable through horizon `H`:
+
+```text
+sigma : each reachable opponent state -> a legal move at that state
+ExitScenario(pi, C_pi, Omega, H)
+  = {sigma in Omega | play(pi, sigma) first leaves C_pi by H}
+UnsafeScenario(pi, Omega, tau, H)
+  = {sigma in Omega | play(pi, sigma) reaches evidence score < tau by H}
+```
+
+This convention treats “the opponent could play move `m` in this state” as a
+typed event, not as an unqualified move word. Making a reply illegal by move
+order can then be a genuine avoidance benefit, while the same global `sigma`
+still supplies choices at every state reached on the competing route.
+
+`Exit` measures preparation failure; `Unsafe` measures chess failure. They must
+not be conflated: an unfamiliar move can be harmless, and a heavily memorized
+line can be bad.
+
+The corpus pilot is weaker. At each recorded opponent node it retains typed
+one-deviation events `(opponent decision index, pre-deviation key, move, child
+key)` and reports only sums of branch incidences. It does **not** compare their
+unions by set inclusion and supplies no evidence of dominance. The production
+experiment must construct `Omega` and the bounded scenario failure sets from
+game and engine data.
 
 ## 4. Three notions of move-order dominance
 
@@ -90,25 +115,37 @@ target class, and are compared for the same number of opponent decisions.
 
 ### Structural deviation dominance
 
-`pi1` structurally dominates `pi2` when
+Fix one `Omega`, threshold, and horizon; a corridor assignment taking every
+candidate `pi` to its `C_pi`; and a declared preorder `CostLE` on cost records.
+Define **weak structural dominance** by
 
 ```text
-Exit(pi1) subset Exit(pi2)
-Unsafe(pi1) subset Unsafe(pi2)
-Cost(pi1) <= Cost(pi2)
+WeakStructural(pi1, pi2) iff
+  ExitScenario(pi1, C_pi1, Omega) subseteq ExitScenario(pi2, C_pi2, Omega)
+  and UnsafeScenario(pi1, Omega) subseteq UnsafeScenario(pi2, Omega)
+  and CostLE(Cost(pi1), Cost(pi2)).
 ```
 
-with at least one strict relation. The direction matters: fewer opponent words
-cause failure. This relation is decidable on a finite graph. Inclusion is more
-informative than comparing branch counts, because two equally large sets can
+The direction matters: fewer common opponent scenarios cause failure. This
+weak relation is a preorder. Define its strict part separately:
+
+```text
+StrictStructural(pi1, pi2) iff
+  WeakStructural(pi1, pi2) and not WeakStructural(pi2, pi1).
+```
+
+The strict relation is irreflexive and transitive. Both relations are decidable
+on a supplied finite graph. Scenario inclusion is more informative than
+comparing branch-incidence counts, because two equally large failure sets can
 contain very different dangers.
 
 ### Robust value dominance
 
 Let `Sigma` be a class of complete opponent policies, each mapping every
-opponent state to a legal move. `pi1` robustly dominates `pi2` if, for every
-`sigma` in `Sigma`, the lower-bounded utility of the play under `(pi1, sigma)`
-is no worse, and its study cost is no greater.
+opponent state to a legal move. `pi1` **weakly robust-value dominates** `pi2`
+if, for every `sigma` in `Sigma`, the lower-bounded utility of the play under
+`(pi1, sigma)` is no worse, and its study cost is no greater. Its strict part is
+again weak dominance without the converse.
 
 This definition compares one global opponent policy across routes, so it
 remains meaningful when they visit different states. It is strong and will be
@@ -128,37 +165,43 @@ Let `Q` be an ambiguity set around an empirical opponent model. Define
 Risk_Q(pi) = max_{q in Q} E_q[regret or failure loss under pi].
 ```
 
-Then `pi1` practically dominates `pi2` if it has no greater robust risk,
-preparation cost, and endpoint regret, with one strict improvement. Ambiguity
-sets prevent a small sample from being treated as truth. Rectangular
-state-action uncertainty gives tractable dynamic programs and an equivalent
-perfect-information zero-sum interpretation [iyengar05][iyengar05], though an
-opponent model tied across many positions may be non-rectangular and should not
-be silently approximated.
+Then `pi1` **weakly practically dominates** `pi2` if it has no greater robust
+risk, preparation cost, and endpoint regret. Define strict practical dominance
+as the weak relation without its converse, rather than building strictness into
+the preorder. Ambiguity sets prevent a small sample from being treated as
+truth. Rectangular state-action uncertainty gives tractable dynamic programs
+and an equivalent perfect-information zero-sum interpretation
+[iyengar05][iyengar05], though an opponent model tied across many positions may
+be non-rectangular and should not be silently approximated.
 
 Dominance should normally be reported as a Pareto relation, not hidden inside
 one arbitrary weighted sum.
 
 ## 5. Move-order risk
 
-For each opponent edge `e` before target coalescence, retain:
+For each first opponent deviation event `e` before target coalescence, retain:
 
 - cohort probability `p(e | state, rating, time control, date)`;
 - sample size and uncertainty interval;
-- engine regret or threshold failure `severity(e)` under a pinned protocol;
+- threshold shortfall or declared failure loss `severity(e)` under a pinned
+  protocol;
 - whether the repertoire contains a response;
 - whether the resulting state later coalesces with prepared material.
 
-A simple descriptive score is
+A simple descriptive score over these mutually exclusive first events is
 
 ```text
-expected exposure = sum_e reach_probability(e) * severity(e).
+expected exposure = sum_e unconditional_first_event_mass(e) * severity(e).
 ```
 
 The robust companion maximizes the expectation over an uncertainty set and
 also reports the worst supported edge separately. Neither a win rate nor a raw
 centipawn average is enough: player selection, rating, color, time control, and
 survivorship all confound game outcomes.
+
+Regret is reserved for comparing the prescribed player move with the best
+engine move at the same player node. It is not used as a synonym for deviation
+loss.
 
 Engine scores are evidence, not proved minimax bounds. Use “pinned engine
 estimate” unless a tablebase or proof-producing search supplies a certificate.
@@ -244,7 +287,8 @@ and, for small instances, a lower-bound certificate.
 One node is not automatically one unit of human memory. Separate at least:
 
 ```text
-PositionDecision  exact state + accepted move(s) + explanation
+PositionDecision  repetition key + accepted move(s) + explanation
+                  + complete-state occurrence provenance
 PlanCard          endpoint-invariant plans, breaks, and piece placements
 DeviationCard     route occurrence + opponent surprise + response
 TransferCard      alternate route to a known position
@@ -260,11 +304,13 @@ model.
 
 The first theorem tranche should avoid engine or frequency claims:
 
-1. bounded opponent-language generation is finite and contains only legal
-   histories;
-2. `Exit`, `Unsafe`, and structural dominance are decidable for finite scopes;
-3. structural dominance is transitive under fixed corridor, threshold, and
-   cost order;
+1. bounded route-local opponent-language generation is finite and contains only
+   legal histories;
+2. typed scenario failure sets, weak structural dominance, and its strict part
+   are decidable for finite scopes;
+3. under fixed `Omega`, horizon, threshold, policy-indexed corridors, and cost
+   preorder, weak structural dominance is a preorder and its strict part is
+   irreflexive and transitive;
 4. target-set loss is monotone along a fixed edge and commitment witnesses are
    checkable;
 5. endpoint-invariant study units factor through the opening quotient, while

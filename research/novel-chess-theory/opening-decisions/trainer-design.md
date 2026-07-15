@@ -1,7 +1,7 @@
 # Position-graph trainer and personal repertoire
 
-This is the product translation of the research program for the existing
-the monorepo's `engine/` crate and browser trainer.
+This is the product translation of the research program for the monorepo's
+`engine/` crate and browser trainer.
 
 ## Replace the sequence book, not the engine stack
 
@@ -15,16 +15,18 @@ Current behavior and proposed behavior differ as follows:
 | Current | Proposed |
 |---|---|
 | Earliest matching line chooses the opponent move | Weighted opponent replies from a pinned cohort, with deliberate rare-deviation drills |
-| Every repetition starts at move one | Due cards start at the exact decision position, with occasional full-route integration reps |
+| Every repetition starts at move one | Due cards start at the reusable-key decision, with occasional full-route integration reps |
 | “Correct” means close to Stockfish's current first choice | Repertoire correctness and engine regret are separate fields |
 | Session-only engine-match statistics | Persistent recall, latency, coverage, and live-game transfer metrics |
-| Move-sequence prefix identifies the opening | Exact position identifies reusable knowledge; route occurrences retain provenance |
+| Move-sequence prefix identifies the opening | Repetition key identifies reusable static knowledge; complete states and routes retain provenance |
 
 ## Minimal data contract
 
 ```text
 PositionDecision
-  key                 canonical repetition fields, equality checked
+  state_ref           complete FIDE state/history for legality and draw claims
+  reusable_key        canonical repetition fields, equality checked
+  factorization_scope which fields are proved safe to share through this key
   fen                 display/interchange position
   side                player side
   accepted_moves      one backbone move, optionally sound alternatives
@@ -38,7 +40,8 @@ RouteOccurrence
   moves               complete UCI prefix
   source_dataset      archive hash and cohort
   count
-  first_deviations[]  opponent move, child key, count, severity, response
+  first_deviations[]  decision index, pre-key, move, child key, count,
+                      threshold loss, prepared response
 
 ReviewState
   card_id
@@ -52,9 +55,10 @@ ReviewState
 ```
 
 Do not use a 64-bit Zobrist value as identity. It is an excellent index, but
-canonical equality must resolve collisions. Do not discard the route after
-creating a position card: move-order warnings and opponent frequency are
-occurrence properties.
+canonical equality must resolve collisions. The reusable key identifies static
+position knowledge only; the referenced complete state decides legality, clock,
+and repetition claims. Do not discard the route after creating a position card:
+move-order warnings and opponent frequency are occurrence properties.
 
 ## Five exercise types
 
@@ -67,8 +71,8 @@ occurrence properties.
 4. **Commitment choice:** present two playable move orders and ask which
    opponent option or target structure each allows.
 5. **Integration game:** start at move one and sample opponent replies from the
-   cohort distribution, with a small adversarial probability reserved for
-   supported dangerous sidelines.
+   cohort distribution, with a declared pilot exploration probability reserved
+   for supported dangerous sidelines.
 
 The first four isolate knowledge; the fifth tests execution. This matters
 because repeated retrieval improves delayed retention [karpicke08][karpicke08],
@@ -78,25 +82,31 @@ recognizes the position or merely continues a familiar song.
 
 ## Scheduling and priority
 
-Schedule each card independently toward a declared target retention, initially
-90%. Use a transparent stability/difficulty model and log every prediction;
-only fit a more complex scheduler after enough personal reviews exist. Modern
-work formulates review scheduling as a stochastic shortest-path problem
-[ye22][ye22], but no scheduler should be imported without calibration to chess
-cards.
+Schedule each card independently toward a declared, user-adjustable retention
+target. A 90% target may be used as a clearly labeled pilot default; neither
+that number nor any alternative is validated for chess cards. Record it in the
+experiment configuration. Use a transparent stability/difficulty model and log
+every prediction; only fit a more complex scheduler after enough personal
+reviews exist. Modern work formulates review scheduling as a stochastic
+shortest-path problem [ye22][ye22], but no scheduler should be imported without
+calibration to chess cards.
 
-Among cards due at similar times, prioritize by:
+Among cards due at similar times, log a feature vector rather than treating one
+formula as established:
 
 ```text
-priority = forgetting_risk
-           * encounter_probability
-           * mistake_severity
-           * route_relevance
-           * transfer_gap.
+forgetting_risk, encounter_probability, mistake_severity,
+route_relevance, transfer_gap
 ```
 
-Always retain a small exploration quota for rare severe moves. Otherwise a
-frequency optimizer teaches only what the player already survives.
+An initial tie-break may use a configurable weighted sum after every feature is
+normalized to `[0, 1]`, with declared missing-value rules and weights summing to
+one. Freeze the normalization, weights, and a rare-severe exploration fraction
+before each pilot; log all components; and compare the heuristic with due-time
+only scheduling in an ablation. No benefit should be claimed until calibration.
+The exploration fraction prevents a frequency optimizer from teaching only
+what the player already survives, but its value is itself an experimental
+parameter.
 
 Grade four dimensions separately:
 
@@ -109,25 +119,24 @@ A valid repertoire move is not “wrong” merely because another MultiPV move i
 three centipawns higher. Conversely, memorizing an engine-best move without its
 critical reply is not mastery.
 
-## Provisional repertoire backbone
+## Structural test fixtures, not a repertoire backbone
 
-Without personal games or style data, only a testable starting hypothesis is
-responsible:
+Without personal games, engine evidence, or style data, this research does not
+recommend an opening. The pinned taxonomy finds dense transposition fibres and
+many terminal histories in the `d4/c4/Nf3`, QGD, Catalan, Slav, and Semi-Slav
+region. That makes the region a useful **engineering fixture** for exercising
+position sharing and route provenance; catalog density is not evidence that the
+openings are frequent, sound, memorable, enjoyable, or superior.
 
-- **White:** `1.d4` and `2.c4`, with a Catalan/QGD-oriented core;
-- **Black versus `1.e4`:** Caro-Kann;
-- **Black versus `1.d4`, `1.Nf3`, and `1.c4`:** a QGD/Semi-Slav central setup
-  where legal and sound, with explicit route cards for independent English and
-  Réti deviations.
+The first experiment should also include an `e4` region selected on the
+training and validation windows, so the implementation is not tuned only to
+one catalog-dense family. It must be labeled as a comparison fixture. The
+Caro-Kann, or any other named defense, belongs here only if the player records
+it as a preference or Gate 2 selects it under frozen criteria; the taxonomy
+pilot supplies no reason to prescribe it.
 
-Why this candidate: it is sound, structurally coherent, and the pinned pilot
-finds unusually large transposition fibres and downstream reuse in the
-`d4/c4/Nf3`, QGD, Catalan, Slav, and Semi-Slav region. Why it is not final: the
-taxonomy has no play frequencies, the setup cannot be forced against every
-move order, and no style preference has been elicited.
-
-Freeze the actual repertoire only after importing the player's games and
-running the held-out experiment. Every chosen branch must pass four gates:
+Freeze an actual repertoire only after importing the player's games and running
+the held-out experiment. Every chosen branch must pass four gates:
 
 1. no unacceptable engine regret under the pinned protocol;
 2. meaningful encounter mass in the target cohort or personal history;

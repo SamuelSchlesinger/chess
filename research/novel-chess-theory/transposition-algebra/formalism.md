@@ -1,9 +1,10 @@
-# From move strings to an alternating path algebra
+# From move strings to a rooted alternating path algebra
 
-The right algebraic object is not a monoid of freely reorderable chess plies.
-It is a typed path category whose equations come in at least three kinds:
-alternating commutations, route substitutions, and removable detours. This
-distinction is forced by chess itself, not chosen for mathematical ornament.
+The right algebraic object for the present corpus is not a monoid of freely
+reorderable chess plies. It is the language of paths from one distinguished
+root inside a typed path category. Candidate equations include alternating
+commutations, route substitutions, and removable detours. This distinction is
+forced by chess itself, not chosen for mathematical ornament.
 
 ## The baseline: paths and endpoint equality
 
@@ -14,11 +15,14 @@ are **endpoint-equivalent** when they end at the same repetition position.
 FIDE Article 9.2.3 makes this equality sensitive to the player to move, piece
 placement, castling rights, and effective en-passant rights [fide23][fide23].
 
-This is naturally a path category followed by an endpoint projection. A
-quotient that identifies every pair of parallel paths is a thin reachability
-category. Category presentations modulo path equations are standard rewriting
-objects [clerc15][clerc15]; the proposed contribution is the chess-specific
-choice, measurement, and use of the equations.
+The ambient object is naturally a path category followed by an endpoint
+projection. A quotient that identifies every pair of parallel paths in every
+hom-set would be a thin reachability category, and category presentations
+modulo path equations are standard rewriting objects [clerc15][clerc15]. This
+branch does **not** present that entire quotient. It presents only
+root-originating paths, because every equation constructed below has the fixed
+root as its source. No cancellation principle turns those equations into
+equalities between arbitrary paths `p,q : x -> y`.
 
 There is an important scope boundary. A repetition position is enough to
 determine legal continuations, but not every game outcome: the half-move clock
@@ -49,12 +53,18 @@ monoid is just the free monoid. This explains why saying that opening moves
 “commute” is intuitively useful but formally imprecise.
 
 State-dependent independence and dynamic partial-order reduction are well
-established in verification [flanagan05][flanagan05]. Chess adds an alternating
-adversary, so the scheduler cannot simply be discarded.
+established for concurrent-system interleavings [flanagan05][flanagan05]. That
+work is an analogy, not yet an applicable chess reduction theorem. Chess has an
+alternating adversary, its adjacent single-ply independence relation is empty,
+and deleting one route can delete opponent deviations. Until an explicit
+reachability-, language-, or value-preservation theorem is proved, the safe
+term is **relation-guided graph exploration**, not certified partial-order
+reduction.
 
-## The first useful local relation: an alternating braid
+## The first local reordering relation considered here: an alternating braid
 
-The smallest parity-preserving local equation has three plies:
+The smallest parity-preserving reversal of two moves by the same player has
+three plies:
 
 ```text
 a ; b ; c   ~=   c ; b ; a
@@ -110,7 +120,7 @@ alternating braid equivalence
         subset of all endpoint equality
 ```
 
-## A finite presentation and normal forms
+## A finite rooted-path presentation and normal forms
 
 For a finite rooted directed graph `G = (V,E)` in which every vertex is
 reachable, choose a rooted arborescence `T`. Let `tau(v)` be the unique tree
@@ -121,7 +131,7 @@ equation
 tau(u) ; e   ~=   tau(v).
 ```
 
-> **Arborescence normalization theorem.** These chord equations generate
+> **Rooted arborescence normalization theorem.** These chord equations generate
 > exactly endpoint equality on all root-originating paths in `G`.
 
 The proof is a one-line path induction with an important typing condition. If
@@ -133,9 +143,11 @@ paths to `v` normalize to the same `tau(v)`.
 Choose each `tau(v)` to be shortest and then lexicographically least. Orient
 every chord equation toward `tau(v)`. The shortlex measure strictly decreases,
 so normalization terminates, and the theorem supplies the unique normal form.
-This is a specialized convergent presentation; general completion procedures
-go back to Knuth and Bendix [knuth70][knuth70], while the termination-plus-local
-confluence route is Newman's classical result [newman42][newman42].
+This is a specialized convergent rewriting system for the rooted path language;
+it is not a presentation of every hom-set of the path category. General
+completion procedures go back to Knuth and Bendix [knuth70][knuth70], while the
+termination-plus-local confluence route is Newman's classical result
+[newman42][newman42].
 
 ## Why the number of chords is also a lower bound
 
@@ -148,18 +160,21 @@ beta_1 = |E| - |V| + 1.
 
 The arborescence has `|V|-1` edges, hence exactly `beta_1` chords. Each chord
 equation has a boundary equal to its fundamental cycle, and these cycles form
-a basis. Conversely, in any presentation that keeps the graph's arrows and
-uses endpoint-sound parallel-path equations, the equation boundaries must span
-the cycle space: otherwise some fundamental root-path equality remains
-underived after linearization over `F_2`. At least `beta_1` equations are
-therefore necessary. The chord construction reaches that bound.
+a basis. Conversely, consider a presentation that (1) keeps every concrete
+graph arrow, (2) generates endpoint equality for every root-originating path,
+and (3) counts each concrete endpoint-sound parallel-path equation as one
+generator. Its equation boundaries must span the cycle space: otherwise some
+fundamental root-path equality remains underived after linearization over
+`F_2`. At least `beta_1` concrete equations are therefore necessary. The chord
+construction reaches that bound. A parameterized schema or macro can describe
+many such equations and is a different counting model.
 
 This does **not** mean that cycle-space algebra alone proves normalization.
 The cycle space forgets arrow direction, move labels, endpoints, path
 composition, and legality. An arbitrary linear cycle basis need not lift to
 directed parallel chess paths. The arborescence construction does lift, and
-the path-induction proof—not the rank calculation—establishes the directed
-congruence result.
+the path-induction proof—not the rank calculation—establishes the rooted
+directed congruence result.
 
 ## Formal theorem candidates
 
@@ -171,30 +186,25 @@ The smallest useful Lean development is:
 3. prove that braid closure preserves length and move multiset;
 4. instantiate the existing Caro-Kann and Catalan witnesses as strict
    obstructions to braid-only completeness;
-5. formalize the arborescence normalization theorem for a finite rooted typed
-   graph, then connect corpus certificates to it;
+5. formalize the rooted arborescence normalization and conditional rank
+   lower-bound theorems for a finite rooted typed graph, then check the emitted
+   corpus certificate against them;
 6. define a shortlex normalizer and prove termination, soundness, and unique
-   normal forms.
+   normal forms;
+7. before using partial-order-reduction terminology, state and prove which
+   adversarial observation relation-guided exploration preserves.
 
 The algebra becomes chess theory only when its generators are interpreted.
-The next question is not whether a 205-equation basis exists—it must—but
-whether those equations cluster into a small vocabulary of plans that players
-can recognize and reuse.
+The next question is not whether a 205-equation rooted basis exists under the
+declared concrete-generator model—it does—but whether those equations cluster
+into a small vocabulary of plans that players can recognize and reuse.
 
 ## Local References
 
-- <a id="aalbersberg88"></a> **aalbersberg88** — IJsbrand Jan Aalbersberg and Grzegorz Rozenberg, “Theory of Traces,” *Theoretical Computer Science* 60(1), 1988, pp. 1–82. [DOI](https://doi.org/10.1016/0304-3975(88)90051-5).
-- <a id="clerc15"></a> **clerc15** — Florence Clerc and Samuel Mimram, “Presenting a Category Modulo a Rewriting System,” *RTA 2015*, LIPIcs 36, 2015, pp. 89–105. [DOI](https://doi.org/10.4230/LIPIcs.RTA.2015.89).
-- <a id="fide23"></a> **fide23** — International Chess Federation, *FIDE Laws of Chess taking effect from 1 January 2023*, Article 9.2.3, approved 7 August 2022. [Official handbook](https://handbook1090.fide.com/chapter/E012023) (accessed 2026-07-14).
-- <a id="flanagan05"></a> **flanagan05** — Cormac Flanagan and Patrice Godefroid, “Dynamic Partial-Order Reduction for Model Checking Software,” *POPL 2005*, pp. 110–121. [DOI](https://doi.org/10.1145/1047659.1040315).
-- <a id="knuth70"></a> **knuth70** — Donald E. Knuth and Peter B. Bendix, “Simple Word Problems in Universal Algebras,” in *Computational Problems in Abstract Algebra*, Pergamon Press, 1970, pp. 263–297. [DOI](https://doi.org/10.1016/B978-0-08-012975-4.50028-X).
-- <a id="newman42"></a> **newman42** — M. H. A. Newman, “On Theories with a Combinatorial Definition of ‘Equivalence’,” *Annals of Mathematics* 43(2), 1942, pp. 223–243. [DOI](https://doi.org/10.2307/1968867).
-- <a id="vanoostrom23"></a> **vanoostrom23** — Vincent van Oostrom, “On Causal Equivalence by Tracing in String Rewriting,” *Electronic Proceedings in Theoretical Computer Science* 377, 2023, pp. 27–43. [DOI](https://doi.org/10.4204/EPTCS.377.2).
-
-[aalbersberg88]: https://doi.org/10.1016/0304-3975(88)90051-5
-[clerc15]: https://doi.org/10.4230/LIPIcs.RTA.2015.89
-[fide23]: https://handbook1090.fide.com/chapter/E012023
-[flanagan05]: https://doi.org/10.1145/1047659.1040315
-[knuth70]: https://doi.org/10.1016/B978-0-08-012975-4.50028-X
-[newman42]: https://doi.org/10.2307/1968867
-[vanoostrom23]: https://doi.org/10.4204/EPTCS.377.2
+[aalbersberg88]: sources.md#aalbersberg88
+[clerc15]: sources.md#clerc15
+[fide23]: sources.md#fide23
+[flanagan05]: sources.md#flanagan05
+[knuth70]: sources.md#knuth70
+[newman42]: sources.md#newman42
+[vanoostrom23]: sources.md#vanoostrom23
