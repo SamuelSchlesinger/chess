@@ -208,6 +208,18 @@ def renderUnchecked (position : Position) (mode : EnPassantMode := .raw) : Strin
       toString position.halfmoveClock,
       toString position.fullmoveNumber]
 
+/-- Render the four position-identity fields without representation checks.
+This is EPD-shaped text rather than a complete EPD operation record. -/
+def renderEPDUnchecked (position : Position) (mode : EnPassantMode := .raw) : String :=
+  let enPassantTarget := match mode with
+    | .raw => position.enPassantTarget
+    | .effective => effectiveEnPassantTarget position
+  String.intercalate " "
+    [renderBoard position.board,
+      renderTurn position.turn,
+      renderCastling position.castlingRights,
+      renderEnPassant enPassantTarget]
+
 private def validateForRendering (position : Position) : Except String Unit := do
   if position.fullmoveNumber == 0 then
     .error "FEN fullmove number must be positive"
@@ -227,7 +239,16 @@ def render (position : Position) (mode : EnPassantMode := .raw) : Except String 
   validateForRendering position
   pure (renderUnchecked position mode)
 
+/-- Render canonical four-field EPD-shaped position identity after checking the
+same representation constraints as `render`.  With `.effective`, this is the
+monorepo's stable, cross-language `PositionId`. -/
+def renderEPD (position : Position) (mode : EnPassantMode := .raw) : Except String String := do
+  validateForRendering position
+  pure (renderEPDUnchecked position mode)
+
 def renderRaw (position : Position) : Except String String := render position .raw
 def renderEffective (position : Position) : Except String String := render position .effective
+def renderRawEPD (position : Position) : Except String String := renderEPD position .raw
+def renderEffectiveEPD (position : Position) : Except String String := renderEPD position .effective
 
 end Chess.FEN

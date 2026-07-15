@@ -99,7 +99,8 @@ lake exe chess_validate
 
 The small regression corpus exercises perft, individual move legality, complete
 traces, history-sensitive repetition and draw thresholds, phase monotonicity,
-and exact versus repetition-only opening transpositions. A separately pinned
+exact versus repetition-only opening transpositions, and a shared nine-case
+`PositionId` contract that Lean and Rust both execute. A separately pinned
 CC0 Lichess corpus adds 3,803 named opening lines and 36,840 plies. Lean checks
 every UCI move for legality, resolves every SAN token in its evolving position,
 requires SAN and UCI to denote the same move at every ply, and checks every
@@ -108,6 +109,12 @@ occurrences, deduplicates their move histories, and checks the exact
 transposition-fibre distribution. Source revisions, hashes, licenses,
 reproduction details, and the empirical graph report are recorded in
 [`data/PROVENANCE.md`](data/PROVENANCE.md).
+
+Rust deliberately separates its Polyglot-compatible `Board::hash()` from the
+structural FIDE `RepetitionKey`. A reachable-from-start regression includes a
+pinned en-passant occurrence whose Polyglot key differs after the target
+expires; the exact game history still recognizes the resulting threefold
+position, and search tests exercise its distinct one-ancestor draw heuristic.
 
 If Stockfish 18 is installed, an optional external cross-check is available:
 

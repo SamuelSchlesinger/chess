@@ -1,0 +1,11 @@
+# `position_id` is canonical four-field effective EPD: placement, turn, castling, legally effective en-passant target.
+id	fen	position_id	source_id
+initial	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -	handcrafted-rules
+initial-different-clocks	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 73 42	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -	handcrafted-rules
+e4-ineffective-ep	rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1	rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -	pgn-fen-1994
+e4-no-ep	rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 9 7	rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -	handcrafted-rules
+pinned-ep	8/8/8/K1Pp3r/8/8/8/7k w - d6 0 1	8/8/8/K1Pp3r/8/8/8/7k w - -	handcrafted-rules
+pinned-no-ep	8/8/8/K1Pp3r/8/8/8/7k w - - 17 9	8/8/8/K1Pp3r/8/8/8/7k w - -	handcrafted-rules
+legal-ep	8/8/8/K1Pp4/8/8/8/7k w - d6 0 1	8/8/8/K1Pp4/8/8/8/7k w - d6	handcrafted-rules
+legal-no-ep	8/8/8/K1Pp4/8/8/8/7k w - - 0 1	8/8/8/K1Pp4/8/8/8/7k w - -	handcrafted-rules
+castling-rights-lost	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - -	handcrafted-rules

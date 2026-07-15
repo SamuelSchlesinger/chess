@@ -10,6 +10,7 @@ use crate::eval::{
     DRAW, Evaluator, HandcraftedEval, INFINITY, MATE, MATE_IN_MAX, MAX_PLY, is_mate,
 };
 use crate::moves::{Move, MoveList};
+use crate::repetition::RepetitionKey;
 use crate::tt::{Bound, Tt};
 use crate::types::{Color, PieceType};
 use std::sync::Arc;
@@ -118,8 +119,8 @@ pub struct Engine<E: Evaluator = HandcraftedEval> {
     eval: E,
     data: Box<SearchData>,
     stop: Arc<AtomicBool>,
-    /// Position keys preceding the search root (for repetition detection).
-    root_history: Vec<u64>,
+    /// Exact position keys preceding the search root (for repetition detection).
+    root_history: Vec<RepetitionKey>,
     /// Root moves excluded from this search (for MultiPV-style re-searches).
     exclude_root: Vec<Move>,
 
@@ -131,8 +132,8 @@ pub struct Engine<E: Evaluator = HandcraftedEval> {
     soft_deadline: Option<Instant>,
     hard_deadline: Option<Instant>,
     node_limit: Option<u64>,
-    /// Position keys along the current search path (root_history + tree).
-    path: Vec<u64>,
+    /// Exact position keys along the current search path (root_history + tree).
+    path: Vec<RepetitionKey>,
 }
 
 impl Default for Engine<HandcraftedEval> {
@@ -184,9 +185,9 @@ impl<E: Evaluator> Engine<E> {
         self.data.clear_heuristics();
     }
 
-    /// Seed the positions that preceded the root (their Zobrist keys), so the
-    /// search can recognise repetitions with the actual game history.
-    pub fn set_history(&mut self, keys: &[u64]) {
+    /// Seed the exact positions that preceded the root, so the search can
+    /// recognise repetitions with the actual game history.
+    pub fn set_history(&mut self, keys: &[RepetitionKey]) {
         self.root_history.clear();
         self.root_history.extend_from_slice(keys);
     }
@@ -306,7 +307,7 @@ impl<E: Evaluator> Engine<E> {
         // current node; seed it with the game history plus the root position.
         self.path.clear();
         self.path.extend_from_slice(&self.root_history);
-        self.path.push(board.hash());
+        self.path.push(board.repetition_key());
 
         // Time management.
         self.soft_deadline = None;
@@ -434,7 +435,7 @@ impl<E: Evaluator> Engine<E> {
         let static_eval = self.eval.evaluate(board);
 
         // Null-move pruning. `null_ok` forbids two nulls in a row: a double null
-        // restores the original Zobrist key while inflating the half-move clock,
+        // restores the original repetition key while inflating the half-move clock,
         // which would make `is_repetition` report a spurious draw.
         if null_ok
             && !is_pv
@@ -446,7 +447,7 @@ impl<E: Evaluator> Engine<E> {
             let r = 2 + depth / 4;
             self.eval.on_make(board, Move::NONE);
             let undo = board.make_null_move();
-            self.path.push(board.hash());
+            self.path.push(board.repetition_key());
             let score = -self.negamax(board, depth - 1 - r, -beta, -beta + 1, ply + 1, false);
             self.path.pop();
             board.unmake_null_move(undo);
@@ -485,7 +486,7 @@ impl<E: Evaluator> Engine<E> {
 
             self.eval.on_make(board, mv);
             let undo = board.make_move(mv);
-            self.path.push(board.hash());
+            self.path.push(board.repetition_key());
 
             // Late-move reductions for late quiet moves.
             let mut reduction = 0;
@@ -787,5 +788,29 @@ fn score_from_tt(score: i32, ply: usize) -> i32 {
         score + ply as i32
     } else {
         score
+    }
+}
+
+#[cfg(test)]
+mod repetition_tests {
+    use super::*;
+
+    #[test]
+    fn search_ancestor_match_uses_fide_identity_not_polyglot_identity() {
+        let with_pinned_ep =
+            Board::from_fen("8/8/8/K1Pp3r/8/8/8/7k w - d6 0 1").unwrap();
+        let after_ep_expires =
+            Board::from_fen("8/8/8/K1Pp3r/8/8/8/7k w - - 4 3").unwrap();
+        assert_ne!(with_pinned_ep.hash(), after_ep_expires.hash());
+
+        let mut engine = Engine::new();
+        engine.path = vec![
+            with_pinned_ep.repetition_key(),
+            after_ep_expires.repetition_key(),
+        ];
+
+        // Search semantics deliberately score one matching ancestor as a draw
+        // heuristic; this is separate from Game's threefold claim threshold.
+        assert!(engine.is_repetition(&after_ep_expires));
     }
 }

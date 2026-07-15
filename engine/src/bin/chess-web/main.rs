@@ -31,7 +31,8 @@ mod uci;
 use chess::eval::nnue::QNnueEval;
 use chess::eval::{MAX_PLY, is_mate, mate_in_moves};
 use chess::{
-    Analysis, Board, Color, Engine, Game, HandcraftedEval, Limits, Move, Outcome, SearchInfo,
+    Analysis, Board, Color, Engine, Game, HandcraftedEval, Limits, Move, Outcome, RepetitionKey,
+    SearchInfo,
 };
 use http::{
     Request, jarr, jopt, jstr, read_request, respond, respond_bad_request, respond_json,
@@ -400,7 +401,7 @@ impl BuiltIn {
         }
     }
 
-    fn set_history(&mut self, keys: &[u64]) {
+    fn set_history(&mut self, keys: &[RepetitionKey]) {
         match self {
             BuiltIn::Pesto(e) => e.set_history(keys),
             BuiltIn::Nnue(e) => e.set_history(keys),

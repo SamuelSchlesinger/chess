@@ -9,7 +9,7 @@
 //! is moved into the thread and handed back when the search finishes.
 
 use chess::eval::mate_in_moves;
-use chess::{Analysis, Board, Engine, Limits, SearchInfo};
+use chess::{Analysis, Board, Engine, Limits, RepetitionKey, SearchInfo};
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,9 +21,9 @@ fn main() {
     let mut search: Option<JoinHandle<Engine>> = None;
     let stop = engine.as_ref().unwrap().stop_handle();
 
-    // Current position and the Zobrist keys of all positions preceding it.
+    // Current position and exact keys of all positions preceding it.
     let mut board = Board::startpos();
-    let mut history: Vec<u64> = Vec::new();
+    let mut history: Vec<RepetitionKey> = Vec::new();
 
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
@@ -148,7 +148,7 @@ fn parse_after(s: &str, key: &str) -> Option<u64> {
 }
 
 /// Parse `position [startpos | fen <fen>] [moves ...]` into a board + history.
-fn parse_position(line: &str) -> (Board, Vec<u64>) {
+fn parse_position(line: &str) -> (Board, Vec<RepetitionKey>) {
     let mut board = Board::startpos();
     let tokens: Vec<&str> = line.split_whitespace().collect();
     let mut i = 1;
@@ -175,7 +175,7 @@ fn parse_position(line: &str) -> (Board, Vec<u64>) {
         i += 1;
         for &mv in &tokens[i..] {
             if let Some(m) = board.parse_uci(mv) {
-                history.push(board.hash());
+                history.push(board.repetition_key());
                 board.make_move(m);
             }
         }

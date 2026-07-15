@@ -26,14 +26,16 @@ The only persistent position identity is `PositionId`, serialized as canonical
 effective four-field EPD:
 
 ```text
-<piece-placement> <side-to-move> <clean-castling-rights> <effective-ep-target>
+<piece-placement> <side-to-move> <castling-rights> <effective-ep-target>
 ```
 
 The en-passant field is a square only when an en-passant capture is currently
-legal; otherwise it is `-`. Castling rights are normalized to rights that
-remain valid in the modeled position. Serialization uses canonical FEN board
-placement, `w`/`b`, ordered `KQkq` rights or `-`, lowercase algebraic squares,
-single ASCII spaces, and no trailing space.
+legal; otherwise it is `-`. Castling rights are preserved as historical state,
+because losing them can distinguish otherwise identical placements. The
+well-formed interchange boundary requires those bits to describe real rights;
+it does not silently repair stale rights. Serialization uses canonical FEN
+board placement, `w`/`b`, ordered `KQkq` rights or `-`, lowercase algebraic
+squares, single ASCII spaces, and no trailing space.
 
 The interchange boundary assigns `PositionId` only to well-formed positions.
 Malformed internal states, such as stale castling bits on absent rooks, must be
@@ -51,6 +53,12 @@ PositionId(p) = PositionId(q)  iff  p and q are the same repetition position.
 A Polyglot/Zobrist hash may index a cache, but it is never an ID, database key,
 foreign key, card key, or equality witness. Hash-table hits must be confirmed
 by `PositionId` or exact field equality.
+
+The implementation boundary is explicit: Lean's `FEN.renderEffectiveEPD` and
+Rust's `Board::position_id` emit the persistent text; Lean's `RepetitionKey`
+and Rust's structural `RepetitionKey` implement collision-free equality. Rust
+continues to use `Board::hash()` for Polyglot interoperability and its
+transposition table, never for FIDE repetition adjudication.
 
 `PositionId` intentionally excludes clocks and prior occurrences. Complete
 game adjudication uses a separate `GameState` containing the current position,

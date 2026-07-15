@@ -205,6 +205,17 @@ private def validateOpeningPairRow : List String → Failures
               validateSource source
   | fields => [s!"expected 12 tab-separated fields, got {fields.length}"]
 
+private def validatePositionIdRow : List String → Failures
+  | [_, fen, expectedPositionId, source] =>
+      match parseFEN fen with
+      | .error message => message :: validateSource source
+      | .ok position =>
+          match FEN.renderEffectiveEPD position with
+          | .error message => s!"position-id rendering failed: {message}" :: validateSource source
+          | .ok actualPositionId =>
+              mismatch "position_id" expectedPositionId actualPositionId ++ validateSource source
+  | fields => [s!"expected 4 tab-separated fields, got {fields.length}"]
+
 private def numberedLines (content : String) : List (Nat × String) :=
   let rec loop (number : Nat) : List String → List (Nat × String)
     | [] => []
@@ -253,6 +264,7 @@ private def tracesHeader :=
   "id\tstart_fen\tuci_moves\texpected_raw_fen\texpected_effective_fen\trepetitions\tthreefold\tfivefold\thalfmove_ge_100\thalfmove_ge_150\tcheckmate\tphase\tsource_id"
 private def openingPairsHeader :=
   "id\tstart_fen\tleft_moves\tright_moves\trelation\tleft_raw_fen\tright_raw_fen\tleft_effective_fen\tright_effective_fen\tleft_phase\tright_phase\tsource_id"
+private def positionIdsHeader := "id\tfen\tposition_id\tsource_id"
 
 def main : IO Unit := do
   let perftFailures ← validateFile "data/perft.tsv" perftHeader validatePerftRow
@@ -260,13 +272,15 @@ def main : IO Unit := do
   let traceFailures ← validateFile "data/traces.tsv" tracesHeader validateTraceRow
   let openingFailures ←
     validateFile "data/opening_pairs.tsv" openingPairsHeader validateOpeningPairRow
+  let positionIdFailures ←
+    validateFile "data/position_ids.tsv" positionIdsHeader validatePositionIdRow
   let namedOpenings ← OpeningCorpus.validate
   let openingGraph ← OpeningGraph.analyze
   let failures := perftFailures ++ moveFailures ++ traceFailures ++ openingFailures ++
-    namedOpenings.failures ++ openingGraph.failures
+    positionIdFailures ++ namedOpenings.failures ++ openingGraph.failures
   if failures.isEmpty then
     IO.println
-      "validated data/perft.tsv, data/moves.tsv, data/traces.tsv, and data/opening_pairs.tsv"
+      "validated data/perft.tsv, data/moves.tsv, data/traces.tsv, data/opening_pairs.tsv, and data/position_ids.tsv"
     IO.println s!"validated {namedOpenings.source}: {namedOpenings.summary.describe}"
     IO.println s!"analyzed opening graph: {openingGraph.summary.describe}"
   else

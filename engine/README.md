@@ -19,9 +19,11 @@ between them:
   king-danger map) with exact en-passant legality, castling, and promotions.
 - **Full rules & outcomes** — check / checkmate / stalemate, the 50- and 75-move
   rules, threefold / fivefold repetition, and insufficient material, surfaced as
-  an [`Outcome`] via [`Game`].
+  an [`Outcome`] via [`Game`]. Repetition uses a collision-free structural
+  [`RepetitionKey`], including an en-passant target only when a capture is legal.
 - **Interop** — FEN, UCI and SAN moves, and **Polyglot-compatible** Zobrist
-  hashing (bit-for-bit identical to the published book format).
+  hashing (bit-for-bit identical to the published book format), plus canonical
+  effective four-field EPD from `Board::position_id()` for persistent identity.
 - **Fast sliding attacks** — magic bitboards (a single multiply-shift-load),
   with the classical ray scan kept for cross-checking and benchmarking.
 
@@ -64,6 +66,7 @@ Every operation is validated against **publicly-downloaded datasets** (see
 | SAN | real PGN games (Kasparov–Deep Blue, etc.) | 707 half-moves parsed, played, and SAN-round-tripped |
 | Packed | the 6 838-position suite | lossless round-trip + random-access agreement |
 | Draw rules | constructed positions | stalemate, threefold, 50/75-move, insufficient material |
+| Repetition identity | shared Lean/Rust fixtures + reachable game | clocks/castling, legal and pinned en passant, FIDE 3 occurrences vs. Polyglot 2 |
 
 ```sh
 cargo test --release                 # fast suite
@@ -149,3 +152,4 @@ pin-aware legal generation) and how the current design was chosen.
 [`Packed`]: crate::Packed
 [`Game`]: crate::Game
 [`Outcome`]: crate::Outcome
+[`RepetitionKey`]: crate::RepetitionKey

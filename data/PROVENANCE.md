@@ -46,11 +46,37 @@ The protocol's `0000` null sentinel is not treated as a chess move.
 ### `lean-game-examples`, `lean-opening-theory`, `handcrafted-rules`
 
 These are deliberately small, hand-authored fixtures that exercise the
-project's stated FIDE semantics: history-sensitive repetition, castling through
+project’s stated FIDE semantics: history-sensitive repetition, castling through
 check, legal versus pinned en passant, promotion, the phase potential, and
 exact versus repetition-only opening transpositions. Their expected fields
 were recomputed by this validator and independently inspected; they do not have
 an external empirical provenance.
+
+The repetition identity follows FIDE Laws of Chess Article 9.2.3, in the
+official English Laws approved 2022-08-07 and applied from 2023-01-01:
+<https://handbook.fide.com/chapter/E012023>. In particular, the Article makes
+legal en-passant availability and retained castling rights part of deciding
+whether two occurrences are the same position.
+
+`position_ids.tsv` is the cross-language identity contract. Its nine rows
+exercise clock irrelevance, castling-right relevance, raw-but-ineffective
+en-passant targets after `e2e4`, a pinned en-passant capture, and a genuinely
+legal en-passant capture. Lean checks the rows with
+`FEN.renderEffectiveEPD`; Rust checks the same bytes with
+`Board::position_id`. Both the Lean trace validator and the Rust suite also
+replay this legal history from the standard initial position:
+
+```text
+1.d4 e5 2.dxe5 Nf6 3.e4 Nxe4 4.Nf3 Nc5 5.Nc3 g6
+6.Bf4 Bg7 7.Qd2 O-O 8.h3 Re8 9.a3 d5
+10.Ng1 Nbd7 11.Nf3 Nb8 12.Ng1 Nbd7 13.Nf3 Nb8
+```
+
+After `9...d5`, `e5xd6 e.p.` would expose White's king on e1 to the rook
+on e8, so it is illegal. The initial raw target and the two later occurrences
+therefore make three equal FIDE positions, while the legality-insensitive
+Polyglot convention assigns only the two later occurrences the same `u64`.
+The regression asserts exact count three and simulated legacy count two.
 
 ## Pinned named-opening corpus
 

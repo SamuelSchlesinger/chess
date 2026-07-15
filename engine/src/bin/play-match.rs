@@ -14,13 +14,16 @@
 //!   cargo run --release --bin play-match -- --games 200 --nodes-a 5000 \
 //!       --nodes-b 5000 --net-a nets/v1.nnue --random-plies 8 --seed 1
 
-use chess::{Board, Engine, Game, HandcraftedEval, Limits, Mcts, Move, NnueEval, Outcome, PolicyValueNet};
+use chess::{
+    Board, Engine, Game, HandcraftedEval, Limits, Mcts, Move, NnueEval, Outcome,
+    PolicyValueNet, RepetitionKey,
+};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 const MAX_PLIES: u32 = 320;
 
-type Player = Box<dyn FnMut(&Board, &[u64]) -> Move>;
+type Player = Box<dyn FnMut(&Board, &[RepetitionKey]) -> Move>;
 
 /// An external UCI engine (e.g. Stockfish) driven at a fixed node budget.
 struct ExternalEngine {
@@ -111,7 +114,7 @@ fn make_player(
         // The hybrid arm: alpha-beta search over the AZ net's value head.
         let eval = chess::eval::AzValueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}"));
         let mut engine = Engine::with_eval_and_tt(eval, 16);
-        return Box::new(move |board: &Board, hist: &[u64]| {
+        return Box::new(move |board: &Board, hist: &[RepetitionKey]| {
             engine.set_history(hist);
             engine.analyze(board, &limits).best_move
         });
@@ -119,20 +122,20 @@ fn make_player(
     if let Some(path) = az {
         // Policy+value MCTS (the AlphaZero arm).
         let mut m = Mcts::new(PolicyValueNet::load(path).unwrap_or_else(|e| panic!("load {path}: {e}")));
-        return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims_az).0);
+        return Box::new(move |b: &Board, _h: &[RepetitionKey]| m.search(b, sims_az).0);
     }
     if let Some(sims) = mcts_sims {
         // PUCT MCTS (value-only spike) over the chosen evaluator.
         if let Some(path) = net {
             let mut m = Mcts::value(NnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}")));
-            return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims).0);
+            return Box::new(move |b: &Board, _h: &[RepetitionKey]| m.search(b, sims).0);
         }
         let mut m = Mcts::value(HandcraftedEval::new());
-        return Box::new(move |b: &Board, _h: &[u64]| m.search(b, sims).0);
+        return Box::new(move |b: &Board, _h: &[RepetitionKey]| m.search(b, sims).0);
     }
     if let Some(path) = engine {
         let mut ext = ExternalEngine::spawn(path, nodes);
-        Box::new(move |board: &Board, _hist: &[u64]| {
+        Box::new(move |board: &Board, _hist: &[RepetitionKey]| {
             let fen = board.to_fen();
             match ext.best_move(&fen) {
                 Some(mv) => board.parse_uci(&mv).unwrap_or(Move::NONE),
@@ -143,14 +146,14 @@ fn make_player(
         // Quantized incremental NNUE — the production inference path.
         let eval = chess::eval::nnue::QNnueEval::load(path).unwrap_or_else(|e| panic!("load {path}: {e}"));
         let mut engine = Engine::with_eval_and_tt(eval, 16);
-        Box::new(move |board: &Board, hist: &[u64]| {
+        Box::new(move |board: &Board, hist: &[RepetitionKey]| {
             engine.set_history(hist);
             engine.analyze(board, &limits).best_move
         })
     } else {
         let mut engine = Engine::new();
         engine.resize_tt(16);
-        Box::new(move |board: &Board, hist: &[u64]| {
+        Box::new(move |board: &Board, hist: &[RepetitionKey]| {
             engine.set_history(hist);
             engine.analyze(board, &limits).best_move
         })

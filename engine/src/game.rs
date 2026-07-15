@@ -7,6 +7,7 @@
 
 use crate::board::{Board, Undo};
 use crate::moves::Move;
+use crate::repetition::RepetitionKey;
 use crate::types::Color;
 
 /// Why a game is drawn (other than stalemate, which is its own [`Outcome`]).
@@ -53,8 +54,8 @@ impl Outcome {
 #[derive(Clone)]
 pub struct Game {
     board: Board,
-    /// Position hashes, one per ply plus the initial position.
-    hashes: Vec<u64>,
+    /// Exact repetition keys, one per ply plus the initial position.
+    keys: Vec<RepetitionKey>,
     /// Applied moves and their undo records, for [`Game::pop`].
     stack: Vec<(Move, Undo)>,
 }
@@ -67,10 +68,10 @@ impl Game {
 
     /// A game starting from an arbitrary position.
     pub fn from_board(board: Board) -> Game {
-        let hashes = vec![board.hash()];
+        let keys = vec![board.repetition_key()];
         Game {
             board,
-            hashes,
+            keys,
             stack: Vec::new(),
         }
     }
@@ -104,7 +105,7 @@ impl Game {
     pub fn push(&mut self, mv: Move) {
         let undo = self.board.make_move(mv);
         self.stack.push((mv, undo));
-        self.hashes.push(self.board.hash());
+        self.keys.push(self.board.repetition_key());
     }
 
     /// Apply a move given in UCI notation; returns the move if legal.
@@ -125,21 +126,21 @@ impl Game {
     pub fn pop(&mut self) -> Option<Move> {
         let (mv, undo) = self.stack.pop()?;
         self.board.unmake_move(mv, undo);
-        self.hashes.pop();
+        self.keys.pop();
         Some(mv)
     }
 
-    /// Zobrist keys of every position so far, including the current one (one per
-    /// ply plus the initial position). Useful for seeding an engine's
-    /// repetition history during self-play.
-    pub fn position_keys(&self) -> &[u64] {
-        &self.hashes
+    /// Exact repetition keys of every position so far, including the current
+    /// one (one per ply plus the initial position). Useful for seeding an
+    /// engine's repetition history during self-play.
+    pub fn position_keys(&self) -> &[RepetitionKey] {
+        &self.keys
     }
 
     /// How many times the current position has occurred (including now).
     pub fn repetition_count(&self) -> usize {
-        let current = self.board.hash();
-        self.hashes.iter().filter(|&&h| h == current).count()
+        let current = self.board.repetition_key();
+        self.keys.iter().filter(|&&key| key == current).count()
     }
 
     /// Whether the side to move may *claim* a draw (threefold repetition or the

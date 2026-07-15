@@ -182,12 +182,7 @@ private def crossValidateSAN : GameState → Nat → List String → List String
       crossValidateSAN (state.afterMove uciMove) (ply + 1) sanRest uciRest
 
 private def effectiveEPD (position : Position) : Except String String := do
-  let fen ← FEN.renderEffective position
-  match fen.splitOn " " with
-  | [placement, turn, castling, enPassant, _, _] =>
-      pure (String.intercalate " " [placement, turn, castling, enPassant])
-  | fields =>
-      throw s!"internal effective FEN renderer produced {fields.length} fields"
+  FEN.renderEffectiveEPD position
 
 private def validateNonemptyFields (source : String) (line : Nat)
     (fields : List (String × String)) (state : State) : State :=
