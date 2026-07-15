@@ -13,5 +13,6 @@ geometric pawn-square theorem, constructive opposition lemmas, a general
 two-deadline Réti pivot theorem, and an irreversible phase grading whose cycle
 theorems confine every repetition-returning edge to a quiet kernel of non-pawn,
 non-capturing, castling-right-preserving moves. A legal-line trace algebra
-separately formalizes exact and repetition-node opening transpositions. See
+separately formalizes exact and repetition-node opening transpositions, with a
+proved quotient move graph and equality of their residual legal languages. See
 [THEORY.md](THEORY.md).

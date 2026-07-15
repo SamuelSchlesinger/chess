@@ -14,6 +14,8 @@ import Chess.PerftExamples
 import Chess.Game
 import Chess.GameExamples
 import Chess.Validity
+import Chess.Theory.Repetition
+import Chess.Theory.RepetitionGraph
 import Chess.Theory.KingGeometry
 import Chess.Theory.PawnGeometry
 import Chess.Theory.Opposition

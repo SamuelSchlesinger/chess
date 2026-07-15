@@ -1,4 +1,4 @@
-import Chess.Game
+import Chess.Theory.RepetitionGraph
 
 namespace Chess.Theory
 
@@ -36,6 +36,35 @@ theorem phasePotential_eq_of_sameForRepetition {left right : Position}
 belongs to the target's FIDE repetition-equivalence class. -/
 def RepetitionReachable (start target : Position) : Prop :=
   ∃ future, Position.Reachable start future ∧ sameForRepetition future target
+
+/-- Every concrete path projects to a path in the FIDE repetition quotient. -/
+theorem repetitionNodeReachable_of_repetitionReachable {start target : Position}
+    (reachable : RepetitionReachable start target) :
+    RepetitionNode.Reachable
+      (RepetitionNode.ofPosition start) (RepetitionNode.ofPosition target) := by
+  rcases reachable with ⟨future, path, same⟩
+  have nodePath := RepetitionNode.reachable_of_position path
+  have targetEq : RepetitionNode.ofPosition future =
+      RepetitionNode.ofPosition target :=
+    RepetitionNode.ofPosition_eq_iff.mpr same
+  rwa [targetEq] at nodePath
+
+/-- Conversely, operational congruence lifts every quotient path from any
+chosen concrete representative. -/
+theorem repetitionReachable_of_repetitionNodeReachable {start target : Position}
+    (reachable : RepetitionNode.Reachable
+      (RepetitionNode.ofPosition start) (RepetitionNode.ofPosition target)) :
+    RepetitionReachable start target := by
+  rcases RepetitionNode.reachable_lift start reachable with
+    ⟨future, path, targetEq⟩
+  exact ⟨future, path, RepetitionNode.ofPosition_eq_iff.mp targetEq⟩
+
+theorem repetitionReachable_iff_repetitionNodeReachable (start target : Position) :
+    RepetitionReachable start target ↔
+      RepetitionNode.Reachable
+        (RepetitionNode.ofPosition start) (RepetitionNode.ofPosition target) :=
+  ⟨repetitionNodeReachable_of_repetitionReachable,
+    repetitionReachable_of_repetitionNodeReachable⟩
 
 theorem repetitionReachable_phasePotential_le {start target : Position}
     (reachable : RepetitionReachable start target) :
@@ -135,3 +164,50 @@ theorem move_on_repetition_cycle_is_quiet (position : Position) (move : Move)
       exact ⟨piece, rfl, notPawn, targetEmpty, rightsEq, clockEq⟩
 
 end Chess.Theory
+
+namespace Chess.RepetitionNode
+
+/-- Irreversible phase potential descends to a numerical grading of the FIDE
+repetition quotient. -/
+def phasePotential (node : RepetitionNode) : Nat :=
+  Quotient.lift Position.phasePotential
+    (fun _left _right same => Theory.phasePotential_eq_of_sameForRepetition same) node
+
+@[simp] theorem phasePotential_ofPosition (position : Position) :
+    phasePotential (ofPosition position) = position.phasePotential := rfl
+
+/-- Every quotient edge weakly descends the phase grading. -/
+theorem successor_phasePotential_le {node next : RepetitionNode}
+    (successor : Successor node next) :
+    next.phasePotential ≤ node.phasePotential := by
+  induction node using Quotient.inductionOn with
+  | _ position =>
+      rcases successor with ⟨move, legal, rfl⟩
+      exact Chess.phasePotential_applyUnchecked_le position move legal
+
+theorem reachable_phasePotential_le {node future : RepetitionNode}
+    (reachable : Reachable node future) :
+    future.phasePotential ≤ node.phasePotential := by
+  induction reachable with
+  | refl => exact Nat.le_refl _
+  | step successor _ ih =>
+      exact Nat.le_trans ih (successor_phasePotential_le successor)
+
+/-- Every strongly connected component of the formal FIDE-repetition quotient
+has constant irreversible phase potential. -/
+theorem phasePotential_eq_of_mutuallyReachable {left right : RepetitionNode}
+    (forward : Reachable left right) (backward : Reachable right left) :
+    left.phasePotential = right.phasePotential := by
+  exact Nat.le_antisymm (reachable_phasePotential_le backward)
+    (reachable_phasePotential_le forward)
+
+/-- A strictly phase-decreasing quotient edge cannot lie on a directed cycle. -/
+theorem no_strict_phase_edge_on_cycle {node next : RepetitionNode}
+    (_successor : Successor node next)
+    (strict : next.phasePotential < node.phasePotential) :
+    ¬Reachable next node := by
+  intro returns
+  have reverseLe := reachable_phasePotential_le returns
+  exact (Nat.not_lt_of_ge reverseLe) strict
+
+end Chess.RepetitionNode

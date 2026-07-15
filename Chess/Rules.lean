@@ -208,6 +208,16 @@ def isLegal (position : Position) (move : Move) : Bool :=
 def PseudoLegal (position : Position) (move : Move) : Prop := isPseudoLegal position move
 def Legal (position : Position) (move : Move) : Prop := isLegal position move
 
+/-- A raw move is an en-passant capture in a position. Legality remains a
+separate condition because a pinned capturing pawn may not actually move. -/
+def isEnPassantCapture (position : Position) (move : Move) : Bool :=
+  position.enPassantTarget == some move.target &&
+    (position.board.pieceAt move.target).isNone &&
+    move.source.file != move.target.file &&
+    match position.board.pieceAt move.source with
+    | some piece => piece.color == position.turn && piece.kind == .pawn
+    | none => false
+
 namespace Move
 
 /-- A complete, deliberately simple enumeration of raw orthodox move choices.
@@ -241,6 +251,426 @@ theorem legal_iff (position : Position) (move : Move) :
     Legal position move ↔
       PseudoLegal position move ∧ inCheck (applyUnchecked position move).board position.turn = false := by
   simp [Legal, PseudoLegal, isLegal]
+
+/-- Pseudo-legality depends on the rule-relevant position fields, not on either
+move clock. -/
+private theorem pseudoLegal_iff_of_rule_fields_eq {left right : Position} (move : Move)
+    (boardEq : left.board = right.board)
+    (turnEq : left.turn = right.turn)
+    (rightsEq : left.castlingRights = right.castlingRights)
+    (enPassantEq : left.enPassantTarget = right.enPassantTarget) :
+    PseudoLegal left move ↔ PseudoLegal right move := by
+  cases left with
+  | mk leftBoard leftTurn leftRights leftEnPassant leftHalfmove leftFullmove =>
+      cases right with
+      | mk rightBoard rightTurn rightRights rightEnPassant rightHalfmove rightFullmove =>
+          simp only at boardEq turnEq rightsEq enPassantEq
+          subst rightBoard
+          subst rightTurn
+          subst rightRights
+          subst rightEnPassant
+          simp [PseudoLegal, isPseudoLegal, ordinaryPseudoLegal,
+            pawnSingleAdvance, pawnDoubleAdvance, pawnCapture,
+            castlePseudoLegal]
+
+/-- The board produced by unchecked move application depends only on the
+starting board and the raw move. -/
+private theorem applyUnchecked_board_eq_of_board_eq {left right : Position} (move : Move)
+    (boardEq : left.board = right.board) :
+    (applyUnchecked left move).board = (applyUnchecked right move).board := by
+  cases left with
+  | mk leftBoard leftTurn leftRights leftEnPassant leftHalfmove leftFullmove =>
+      cases right with
+      | mk rightBoard rightTurn rightRights rightEnPassant rightHalfmove rightFullmove =>
+          simp only at boardEq
+          subst rightBoard
+          cases sourcePiece : leftBoard.pieceAt move.source <;>
+            simp [applyUnchecked, sourcePiece, boardAfter, boardAfterOrdinary]
+
+/-- From an occupied source, unchecked move application preserves equality of
+all rule-relevant fields whenever the inputs agree on board, turn, and
+castling rights. The raw input en-passant fields and clocks are irrelevant
+because move application replaces them. -/
+theorem applyUnchecked_rule_fields_eq_of_occupied
+    {left right : Position} (move : Move) (piece : Piece)
+    (boardEq : left.board = right.board)
+    (turnEq : left.turn = right.turn)
+    (rightsEq : left.castlingRights = right.castlingRights)
+    (occupied : left.board.pieceAt move.source = some piece) :
+    (applyUnchecked left move).board = (applyUnchecked right move).board ∧
+    (applyUnchecked left move).turn = (applyUnchecked right move).turn ∧
+    (applyUnchecked left move).castlingRights =
+      (applyUnchecked right move).castlingRights ∧
+    (applyUnchecked left move).enPassantTarget =
+      (applyUnchecked right move).enPassantTarget := by
+  cases left with
+  | mk leftBoard leftTurn leftRights leftEnPassant leftHalfmove leftFullmove =>
+      cases right with
+      | mk rightBoard rightTurn rightRights rightEnPassant rightHalfmove rightFullmove =>
+          simp only at boardEq turnEq rightsEq occupied
+          subst rightBoard
+          subst rightTurn
+          subst rightRights
+          simp [applyUnchecked, occupied, rightsAfter, revokeRookSquare,
+            boardAfter, boardAfterOrdinary]
+
+/-- Move legality depends on the rule-relevant position fields, not on either
+move clock. -/
+theorem legal_iff_of_rule_fields_eq {left right : Position} (move : Move)
+    (boardEq : left.board = right.board)
+    (turnEq : left.turn = right.turn)
+    (rightsEq : left.castlingRights = right.castlingRights)
+    (enPassantEq : left.enPassantTarget = right.enPassantTarget) :
+    Legal left move ↔ Legal right move := by
+  rw [legal_iff, legal_iff]
+  rw [pseudoLegal_iff_of_rule_fields_eq move boardEq turnEq rightsEq enPassantEq]
+  rw [applyUnchecked_board_eq_of_board_eq move boardEq, turnEq]
+
+private theorem pawnCapture_mono_of_enPassantTarget
+    {left right : Position} (move : Move) (color : Color)
+    (boardEq : left.board = right.board)
+    (enPassantMono :
+      left.enPassantTarget == some move.target →
+        right.enPassantTarget == some move.target) :
+    pawnCapture left move color → pawnCapture right move color := by
+  cases left with
+  | mk leftBoard leftTurn leftRights leftEnPassant leftHalfmove leftFullmove =>
+      cases right with
+      | mk rightBoard rightTurn rightRights rightEnPassant rightHalfmove rightFullmove =>
+          simp only at boardEq
+          subst rightBoard
+          simp only [pawnCapture, Bool.and_eq_true, Bool.or_eq_true] at enPassantMono ⊢
+          rintro ⟨diagonal, occupied | ⟨enPassant, capturedPawn⟩⟩
+          · exact ⟨diagonal, Or.inl occupied⟩
+          · exact ⟨diagonal, Or.inr ⟨enPassantMono enPassant, capturedPawn⟩⟩
+
+private theorem coordinate_offset_unit_ne_self (coordinate : Coordinate) (delta : Int)
+    (unit : delta = 1 ∨ delta = -1)
+    (step : coordinate.offset delta = some coordinate) : False := by
+  rcases unit with rfl | rfl <;> simp [Coordinate.offset] at step
+  · rcases step with ⟨_, _, equality⟩
+    have valueEq := congrArg Fin.val equality
+    simp at valueEq
+  · rcases step with ⟨lower, _, equality⟩
+    have valueEq := congrArg Fin.val equality
+    simp at valueEq
+    omega
+
+private theorem source_file_ne_of_offset_unit {source target : Square}
+    {direction : Direction}
+    (unit : direction.fileDelta = 1 ∨ direction.fileDelta = -1)
+    (step : source.offset direction = some target) :
+    source.file ≠ target.file := by
+  intro sameFile
+  cases fileStep : source.file.offset direction.fileDelta with
+  | none => simp [Square.offset, fileStep] at step
+  | some nextFile =>
+      cases rankStep : source.rank.offset direction.rankDelta with
+      | none => simp [Square.offset, fileStep, rankStep] at step
+      | some nextRank =>
+          simp [Square.offset, fileStep, rankStep] at step
+          have nextFileEq : nextFile = target.file := congrArg Square.file step
+          subst nextFile
+          rw [← sameFile] at fileStep
+          exact coordinate_offset_unit_ne_self source.file direction.fileDelta unit fileStep
+
+private theorem source_file_ne_of_pawnCapture {position : Position}
+    {move : Move} {color : Color} (capture : pawnCapture position move color) :
+    move.source.file ≠ move.target.file := by
+  have parts :
+      (let diagonals := match color with
+        | .white => [Direction.northWest, Direction.northEast]
+        | .black => [Direction.southWest, Direction.southEast]
+       (diagonals.filterMap move.source.offset).contains move.target) ∧
+      (position.board.occupiedByOpponent move.target color ||
+        (position.enPassantTarget == some move.target &&
+          position.board.pieceAt ⟨move.target.file, move.source.rank⟩ ==
+            some ⟨color.other, .pawn⟩)) := by
+    simpa only [pawnCapture, Bool.and_eq_true] using capture
+  have diagonal := parts.1
+  cases color with
+  | white =>
+      simp at diagonal
+      rcases diagonal with northWest | northEast
+      · exact source_file_ne_of_offset_unit (Or.inr rfl) northWest
+      · exact source_file_ne_of_offset_unit (Or.inl rfl) northEast
+  | black =>
+      simp at diagonal
+      rcases diagonal with southWest | southEast
+      · exact source_file_ne_of_offset_unit (Or.inr rfl) southWest
+      · exact source_file_ne_of_offset_unit (Or.inl rfl) southEast
+
+private theorem ordinaryPseudoLegal_mono_of_enPassantTarget
+    {left right : Position} (move : Move) (piece : Piece)
+    (boardEq : left.board = right.board)
+    (enPassantMono :
+      left.enPassantTarget == some move.target →
+        right.enPassantTarget == some move.target) :
+    ordinaryPseudoLegal left move piece → ordinaryPseudoLegal right move piece := by
+  have captureMono := pawnCapture_mono_of_enPassantTarget
+    move piece.color boardEq enPassantMono
+  cases left with
+  | mk leftBoard leftTurn leftRights leftEnPassant leftHalfmove leftFullmove =>
+      cases right with
+      | mk rightBoard rightTurn rightRights rightEnPassant rightHalfmove rightFullmove =>
+          simp only at boardEq
+          subst rightBoard
+          cases piece with
+          | mk color kind =>
+              cases kind with
+              | pawn =>
+                  have singleEq :
+                      pawnSingleAdvance
+                        { board := leftBoard, turn := leftTurn,
+                          castlingRights := leftRights, enPassantTarget := leftEnPassant,
+                          halfmoveClock := leftHalfmove, fullmoveNumber := leftFullmove }
+                        move color =
+                      pawnSingleAdvance
+                        { board := leftBoard, turn := rightTurn,
+                          castlingRights := rightRights, enPassantTarget := rightEnPassant,
+                          halfmoveClock := rightHalfmove, fullmoveNumber := rightFullmove }
+                        move color := by
+                    simp [pawnSingleAdvance]
+                  have doubleEq :
+                      pawnDoubleAdvance
+                        { board := leftBoard, turn := leftTurn,
+                          castlingRights := leftRights, enPassantTarget := leftEnPassant,
+                          halfmoveClock := leftHalfmove, fullmoveNumber := leftFullmove }
+                        move color =
+                      pawnDoubleAdvance
+                        { board := leftBoard, turn := rightTurn,
+                          castlingRights := rightRights, enPassantTarget := rightEnPassant,
+                          halfmoveClock := rightHalfmove, fullmoveNumber := rightFullmove }
+                        move color := by
+                    simp [pawnDoubleAdvance]
+                  simp only [ordinaryPseudoLegal, Bool.and_eq_true, Bool.or_eq_true,
+                    singleEq, doubleEq]
+                  rintro ⟨capturable, promotion, (single | double) | capture⟩
+                  · exact ⟨capturable, promotion, Or.inl (Or.inl single)⟩
+                  · exact ⟨capturable, promotion, Or.inl (Or.inr double)⟩
+                  · exact ⟨capturable, promotion, Or.inr (captureMono capture)⟩
+              | king =>
+                  intro ordinary
+                  simpa [ordinaryPseudoLegal] using ordinary
+              | queen =>
+                  intro ordinary
+                  simpa [ordinaryPseudoLegal] using ordinary
+              | rook =>
+                  intro ordinary
+                  simpa [ordinaryPseudoLegal] using ordinary
+              | bishop =>
+                  intro ordinary
+                  simpa [ordinaryPseudoLegal] using ordinary
+              | knight =>
+                  intro ordinary
+                  simpa [ordinaryPseudoLegal] using ordinary
+
+/-- Pseudo-legality is monotone in the availability of the one raw
+en-passant target inspected by a move. -/
+private theorem pseudoLegal_mono_of_rule_fields {left right : Position} (move : Move)
+    (boardEq : left.board = right.board)
+    (turnEq : left.turn = right.turn)
+    (rightsEq : left.castlingRights = right.castlingRights)
+    (enPassantMono :
+      left.enPassantTarget == some move.target →
+        right.enPassantTarget == some move.target) :
+    PseudoLegal left move → PseudoLegal right move := by
+  have ordinaryMono (piece : Piece) := ordinaryPseudoLegal_mono_of_enPassantTarget
+    move piece boardEq enPassantMono
+  cases left with
+  | mk leftBoard leftTurn leftRights leftEnPassant leftHalfmove leftFullmove =>
+      cases right with
+      | mk rightBoard rightTurn rightRights rightEnPassant rightHalfmove rightFullmove =>
+          simp only at boardEq turnEq rightsEq
+          subst rightBoard
+          subst rightTurn
+          subst rightRights
+          cases sourcePiece : leftBoard.pieceAt move.source with
+          | none => simp [PseudoLegal, isPseudoLegal, sourcePiece]
+          | some piece =>
+              have castleEq :
+                  castlePseudoLegal
+                    { board := leftBoard, turn := leftTurn,
+                      castlingRights := leftRights, enPassantTarget := leftEnPassant,
+                      halfmoveClock := leftHalfmove, fullmoveNumber := leftFullmove }
+                    move piece.color =
+                  castlePseudoLegal
+                    { board := leftBoard, turn := leftTurn,
+                      castlingRights := leftRights, enPassantTarget := rightEnPassant,
+                      halfmoveClock := rightHalfmove, fullmoveNumber := rightFullmove }
+                    move piece.color := by
+                simp [castlePseudoLegal]
+              simp only [PseudoLegal, isPseudoLegal, sourcePiece, Bool.and_eq_true,
+                Bool.or_eq_true, castleEq]
+              rintro ⟨colorEq, ordinary | castle⟩
+              · exact ⟨colorEq, Or.inl (ordinaryMono piece ordinary)⟩
+              · exact ⟨colorEq, Or.inr castle⟩
+
+/-- Full legality is monotone under the same rule-field comparison: enlarging
+raw en-passant availability cannot invalidate an already legal move. -/
+private theorem legal_mono_of_rule_fields {left right : Position} (move : Move)
+    (boardEq : left.board = right.board)
+    (turnEq : left.turn = right.turn)
+    (rightsEq : left.castlingRights = right.castlingRights)
+    (enPassantMono :
+      left.enPassantTarget == some move.target →
+        right.enPassantTarget == some move.target) :
+    Legal left move → Legal right move := by
+  intro legalLeft
+  have leftParts := (legal_iff left move).mp legalLeft
+  refine (legal_iff right move).mpr ⟨?_, ?_⟩
+  · exact pseudoLegal_mono_of_rule_fields move boardEq turnEq rightsEq
+      enPassantMono leftParts.1
+  · rw [← applyUnchecked_board_eq_of_board_eq move boardEq, ← turnEq]
+    exact leftParts.2
+
+private theorem pieceAt_eq_none_of_capturable_of_not_occupiedByOpponent
+    (board : Board) (square : Square) (color : Color)
+    (capturable : board.capturableBy square color)
+    (notOccupied : ¬board.occupiedByOpponent square color) :
+    board.pieceAt square = none := by
+  cases target : board.pieceAt square with
+  | none => rfl
+  | some piece =>
+      cases piece with
+      | mk targetColor targetKind =>
+          exfalso
+          cases color <;> cases targetColor <;>
+            simp [Board.capturableBy, Board.occupiedByOpponent, Color.other, target] at capturable notOccupied
+
+/-- If changing only the raw en-passant field destroys a legal move, that move
+was precisely an en-passant capture in the first position. -/
+theorem isEnPassantCapture_of_legal_of_not_legal
+    {left right : Position} (move : Move)
+    (boardEq : left.board = right.board)
+    (turnEq : left.turn = right.turn)
+    (rightsEq : left.castlingRights = right.castlingRights)
+    (legalLeft : Legal left move)
+    (notLegalRight : ¬Legal right move) :
+    isEnPassantCapture left move := by
+  have leftParts := (legal_iff left move).mp legalLeft
+  have nextBoardEq := applyUnchecked_board_eq_of_board_eq move boardEq
+  have rightSafe :
+      inCheck (applyUnchecked right move).board right.turn = false := by
+    rw [← nextBoardEq, ← turnEq]
+    exact leftParts.2
+  have notPseudoRight : ¬PseudoLegal right move := by
+    intro pseudoRight
+    exact notLegalRight ((legal_iff right move).mpr ⟨pseudoRight, rightSafe⟩)
+  cases left with
+  | mk leftBoard leftTurn leftRights leftEnPassant leftHalfmove leftFullmove =>
+      cases right with
+      | mk rightBoard rightTurn rightRights rightEnPassant rightHalfmove rightFullmove =>
+          simp only at boardEq turnEq rightsEq
+          subst rightBoard
+          subst rightTurn
+          subst rightRights
+          cases sourcePiece : leftBoard.pieceAt move.source with
+          | none =>
+              simp [PseudoLegal, isPseudoLegal, sourcePiece] at leftParts
+          | some piece =>
+              cases piece with
+              | mk color kind =>
+                  cases kind with
+                  | king =>
+                      exfalso
+                      apply notPseudoRight
+                      simpa [PseudoLegal, isPseudoLegal, sourcePiece,
+                        ordinaryPseudoLegal, castlePseudoLegal] using leftParts.1
+                  | queen =>
+                      exfalso
+                      apply notPseudoRight
+                      simpa [PseudoLegal, isPseudoLegal, sourcePiece,
+                        ordinaryPseudoLegal, castlePseudoLegal] using leftParts.1
+                  | rook =>
+                      exfalso
+                      apply notPseudoRight
+                      simpa [PseudoLegal, isPseudoLegal, sourcePiece,
+                        ordinaryPseudoLegal, castlePseudoLegal] using leftParts.1
+                  | bishop =>
+                      exfalso
+                      apply notPseudoRight
+                      simpa [PseudoLegal, isPseudoLegal, sourcePiece,
+                        ordinaryPseudoLegal, castlePseudoLegal] using leftParts.1
+                  | knight =>
+                      exfalso
+                      apply notPseudoRight
+                      simpa [PseudoLegal, isPseudoLegal, sourcePiece,
+                        ordinaryPseudoLegal, castlePseudoLegal] using leftParts.1
+                  | pawn =>
+                      have pseudoLeft := leftParts.1
+                      simp only [PseudoLegal, isPseudoLegal, sourcePiece,
+                        Bool.and_eq_true, Bool.or_eq_true] at pseudoLeft
+                      rcases pseudoLeft with ⟨colorEq, ordinary | impossibleCastle⟩
+                      · simp only [ordinaryPseudoLegal, Bool.and_eq_true,
+                          Bool.or_eq_true] at ordinary
+                        rcases ordinary with
+                          ⟨capturable, promotion, (single | double) | capture⟩
+                        · exfalso
+                          apply notPseudoRight
+                          simp only [PseudoLegal, isPseudoLegal, sourcePiece,
+                            Bool.and_eq_true, Bool.or_eq_true]
+                          refine ⟨colorEq, Or.inl ?_⟩
+                          simp only [ordinaryPseudoLegal, Bool.and_eq_true,
+                            Bool.or_eq_true]
+                          exact ⟨capturable, promotion, Or.inl (Or.inl single)⟩
+                        · exfalso
+                          apply notPseudoRight
+                          simp only [PseudoLegal, isPseudoLegal, sourcePiece,
+                            Bool.and_eq_true, Bool.or_eq_true]
+                          refine ⟨colorEq, Or.inl ?_⟩
+                          simp only [ordinaryPseudoLegal, Bool.and_eq_true,
+                            Bool.or_eq_true]
+                          exact ⟨capturable, promotion, Or.inl (Or.inr double)⟩
+                        · have notCaptureRight :
+                              ¬pawnCapture
+                                { board := leftBoard, turn := leftTurn,
+                                  castlingRights := leftRights,
+                                  enPassantTarget := rightEnPassant,
+                                  halfmoveClock := rightHalfmove,
+                                  fullmoveNumber := rightFullmove }
+                                move color := by
+                            intro captureRight
+                            apply notPseudoRight
+                            simp only [PseudoLegal, isPseudoLegal, sourcePiece,
+                              Bool.and_eq_true, Bool.or_eq_true]
+                            refine ⟨colorEq, Or.inl ?_⟩
+                            simp only [ordinaryPseudoLegal, Bool.and_eq_true,
+                              Bool.or_eq_true]
+                            exact ⟨capturable, promotion, Or.inr captureRight⟩
+                          have captureParts :
+                              (let diagonals := match color with
+                                | .white => [Direction.northWest, Direction.northEast]
+                                | .black => [Direction.southWest, Direction.southEast]
+                               (diagonals.filterMap move.source.offset).contains move.target = true) ∧
+                              (leftBoard.occupiedByOpponent move.target color = true ∨
+                                (leftEnPassant == some move.target) = true ∧
+                                  (leftBoard.pieceAt
+                                      ⟨move.target.file, move.source.rank⟩ ==
+                                    some ⟨color.other, .pawn⟩) = true) := by
+                            simpa only [pawnCapture, Bool.and_eq_true,
+                              Bool.or_eq_true] using capture
+                          rcases captureParts with ⟨diagonal, occupied | enPassant⟩
+                          · exfalso
+                            apply notCaptureRight
+                            simp only [pawnCapture, Bool.and_eq_true,
+                              Bool.or_eq_true]
+                            exact ⟨diagonal, Or.inl occupied⟩
+                          · have notOccupied :
+                                ¬leftBoard.occupiedByOpponent move.target color := by
+                              intro occupied
+                              apply notCaptureRight
+                              simp only [pawnCapture, Bool.and_eq_true,
+                                Bool.or_eq_true]
+                              exact ⟨diagonal, Or.inl occupied⟩
+                            have targetEmpty : leftBoard.pieceAt move.target = none := by
+                              exact pieceAt_eq_none_of_capturable_of_not_occupiedByOpponent
+                                leftBoard move.target color capturable notOccupied
+                            have fileNe := source_file_ne_of_pawnCapture capture
+                            simp [isEnPassantCapture, enPassant.1, targetEmpty,
+                              fileNe, sourcePiece, colorEq]
+                      · have : False := by simpa using impossibleCastle.1
+                        exact this.elim
 
 private theorem pawnMove_phase_decreases (position : Position) (move : Move) (piece : Piece)
     (isPawn : piece.kind = .pawn)

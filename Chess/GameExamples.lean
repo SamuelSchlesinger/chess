@@ -33,30 +33,34 @@ theorem castling_rights_affect_repetition_identity :
     ¬sameForRepetition Initial.position { Initial.position with castlingRights := .none } := by
   native_decide
 
+private def pinnedEnPassant? : Option Position :=
+  (FEN.parse "8/8/8/K1Pp3r/8/8/8/7k w - d6 0 1").toOption
+
+private def pinnedEnPassantWithoutRight? : Option Position :=
+  (FEN.parse "8/8/8/K1Pp3r/8/8/8/7k w - - 0 1").toOption
+
 private def pinnedEnPassant : Position :=
-  match FEN.parse "8/8/8/K1Pp3r/8/8/8/7k w - d6 0 1" with
-  | .ok position => position
-  | .error _ => Initial.position
+  pinnedEnPassant?.get (by native_decide)
 
 private def pinnedEnPassantWithoutRight : Position :=
-  match FEN.parse "8/8/8/K1Pp3r/8/8/8/7k w - - 0 1" with
-  | .ok position => position
-  | .error _ => Initial.position
+  pinnedEnPassantWithoutRight?.get (by native_decide)
 
 /-- A nominal en-passant target does not distinguish repetitions when the only
 capturing pawn is absolutely pinned and therefore cannot legally capture. -/
 theorem illegal_en_passant_does_not_affect_repetition :
     sameForRepetition pinnedEnPassant pinnedEnPassantWithoutRight := by native_decide
 
+private def legalEnPassant? : Option Position :=
+  (FEN.parse "8/8/8/K1Pp4/8/8/8/7k w - d6 0 1").toOption
+
+private def legalEnPassantWithoutRight? : Option Position :=
+  (FEN.parse "8/8/8/K1Pp4/8/8/8/7k w - - 0 1").toOption
+
 private def legalEnPassant : Position :=
-  match FEN.parse "8/8/8/K1Pp4/8/8/8/7k w - d6 0 1" with
-  | .ok position => position
-  | .error _ => Initial.position
+  legalEnPassant?.get (by native_decide)
 
 private def legalEnPassantWithoutRight : Position :=
-  match FEN.parse "8/8/8/K1Pp4/8/8/8/7k w - - 0 1" with
-  | .ok position => position
-  | .error _ => Initial.position
+  legalEnPassantWithoutRight?.get (by native_decide)
 
 /-- A genuinely legal en-passant capture does distinguish repetition identity. -/
 theorem legal_en_passant_affects_repetition :

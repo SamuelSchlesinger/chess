@@ -1,5 +1,6 @@
 import Chess.Initial
 import Chess.Game
+import Chess.Theory.RepetitionGraph
 
 namespace Chess.Theory
 
@@ -69,6 +70,62 @@ theorem lineIsLegal_append (position : Position) (initialMoves suffix : List Mov
   | cons move rest ih =>
       simp only [List.cons_append, lineIsLegal, playMoves]
       simp [ih, and_assoc]
+
+/-- Repetition-equivalent positions admit exactly the same legal move words. -/
+theorem lineIsLegal_eq_of_sameForRepetition {left right : Position}
+    (same : sameForRepetition left right) (moves : List Move) :
+    lineIsLegal left moves = lineIsLegal right moves := by
+  induction moves generalizing left right with
+  | nil => rfl
+  | cons move rest ih =>
+      simp only [lineIsLegal]
+      rw [isLegal_eq_of_sameForRepetition same move]
+      exact congrArg (fun tail => isLegal right move && tail)
+        (ih (sameForRepetition_applyUnchecked same move))
+
+/-- Unchecked execution of any move word respects FIDE repetition identity. -/
+theorem playMoves_sameForRepetition {left right : Position}
+    (same : sameForRepetition left right) (moves : List Move) :
+    sameForRepetition (playMoves left moves) (playMoves right moves) := by
+  induction moves generalizing left right with
+  | nil => exact same
+  | cons move rest ih =>
+      exact ih (sameForRepetition_applyUnchecked same move)
+
+end Chess.Theory
+
+namespace Chess.RepetitionNode
+
+/-- The free monoid of raw move words acts on repetition nodes. -/
+def playMoves (node : RepetitionNode) (moves : List Move) : RepetitionNode :=
+  Quotient.lift
+    (fun position => ofPosition (Theory.playMoves position moves))
+    (fun _left _right same =>
+      Quotient.sound (Theory.playMoves_sameForRepetition same moves)) node
+
+/-- Word legality is well-defined on a repetition node. -/
+def lineIsLegal (node : RepetitionNode) (moves : List Move) : Bool :=
+  Quotient.lift (fun position => Theory.lineIsLegal position moves)
+    (fun _left _right same => Theory.lineIsLegal_eq_of_sameForRepetition same moves) node
+
+@[simp] theorem playMoves_ofPosition (position : Position) (moves : List Move) :
+    playMoves (ofPosition position) moves =
+      ofPosition (Theory.playMoves position moves) := rfl
+
+@[simp] theorem lineIsLegal_ofPosition (position : Position) (moves : List Move) :
+    lineIsLegal (ofPosition position) moves =
+      Theory.lineIsLegal position moves := rfl
+
+theorem playMoves_append (node : RepetitionNode) (initialMoves suffix : List Move) :
+    playMoves node (initialMoves ++ suffix) =
+      playMoves (playMoves node initialMoves) suffix := by
+  induction node using Quotient.inductionOn with
+  | _ position =>
+      exact congrArg ofPosition (Theory.playMoves_append position initialMoves suffix)
+
+end Chess.RepetitionNode
+
+namespace Chess.Theory
 
 /-- Two certified lines transpose at a position when they reach the same
 complete instantaneous endpoint. Their `GameState` histories may still differ. -/
@@ -152,6 +209,139 @@ theorem linesTransposeAt_append {position : Position} {left right suffix : List 
     (lineIsLegal_append position right suffix).mpr
       ⟨transpose.rightLegal, suffixLegalRight⟩, ?_⟩
   rw [playMoves_append, playMoves_append, transpose.endpointEq]
+
+/-- Repetition transposition is preserved when both lines follow a common
+legal prefix. -/
+theorem linesRepetitionTransposeAt_prepend {position : Position}
+    {left right initialMoves : List Move}
+    (initialLegal : lineIsLegal position initialMoves)
+    (transpose : LinesRepetitionTransposeAt
+      (playMoves position initialMoves) left right) :
+    LinesRepetitionTransposeAt position
+      (initialMoves ++ left) (initialMoves ++ right) := by
+  refine ⟨(lineIsLegal_append position initialMoves left).mpr
+      ⟨initialLegal, transpose.leftLegal⟩,
+    (lineIsLegal_append position initialMoves right).mpr
+      ⟨initialLegal, transpose.rightLegal⟩, ?_⟩
+  simpa [playMoves_append] using transpose.sameNode
+
+/-- Transposed prefixes have identical residual languages of legal move
+words. -/
+theorem linesRepetitionTransposeAt_continuation_legal_iff
+    {position : Position} {left right : List Move}
+    (transpose : LinesRepetitionTransposeAt position left right)
+    (suffix : List Move) :
+    lineIsLegal (playMoves position left) suffix ↔
+      lineIsLegal (playMoves position right) suffix := by
+  rw [← Bool.eq_iff_iff]
+  exact lineIsLegal_eq_of_sameForRepetition transpose.sameNode suffix
+
+/-- Equivalently, every common extension is legal on both sides or neither. -/
+theorem linesRepetitionTransposeAt_extension_legal_iff
+    {position : Position} {left right : List Move}
+    (transpose : LinesRepetitionTransposeAt position left right)
+    (suffix : List Move) :
+    lineIsLegal position (left ++ suffix) ↔
+      lineIsLegal position (right ++ suffix) := by
+  rw [lineIsLegal_append, lineIsLegal_append]
+  constructor
+  · rintro ⟨_, suffixLegal⟩
+    exact ⟨transpose.rightLegal,
+      (linesRepetitionTransposeAt_continuation_legal_iff transpose suffix).mp suffixLegal⟩
+  · rintro ⟨_, suffixLegal⟩
+    exact ⟨transpose.leftLegal,
+      (linesRepetitionTransposeAt_continuation_legal_iff transpose suffix).mpr suffixLegal⟩
+
+/-- Right whiskering: every legal common continuation preserves a repetition
+transposition. -/
+theorem linesRepetitionTransposeAt_append {position : Position}
+    {left right suffix : List Move}
+    (transpose : LinesRepetitionTransposeAt position left right)
+    (suffixLegal : lineIsLegal (playMoves position left) suffix) :
+    LinesRepetitionTransposeAt position
+      (left ++ suffix) (right ++ suffix) := by
+  have suffixLegalRight : lineIsLegal (playMoves position right) suffix :=
+    (linesRepetitionTransposeAt_continuation_legal_iff transpose suffix).mp suffixLegal
+  refine ⟨(lineIsLegal_append position left suffix).mpr
+      ⟨transpose.leftLegal, suffixLegal⟩,
+    (lineIsLegal_append position right suffix).mpr
+      ⟨transpose.rightLegal, suffixLegalRight⟩, ?_⟩
+  rw [playMoves_append, playMoves_append]
+  exact playMoves_sameForRepetition transpose.sameNode suffix
+
+/-- Composition of move-order diamonds: quotient-equivalent prefixes may be
+continued by quotient-equivalent suffix lines. -/
+theorem linesRepetitionTransposeAt_compose {position : Position}
+    {left right leftSuffix rightSuffix : List Move}
+    (prefixTranspose : LinesRepetitionTransposeAt position left right)
+    (suffixTranspose : LinesRepetitionTransposeAt
+      (playMoves position left) leftSuffix rightSuffix) :
+    LinesRepetitionTransposeAt position
+      (left ++ leftSuffix) (right ++ rightSuffix) := by
+  have rightSuffixLegal : lineIsLegal (playMoves position right) rightSuffix :=
+    (linesRepetitionTransposeAt_continuation_legal_iff
+      prefixTranspose rightSuffix).mp suffixTranspose.rightLegal
+  refine ⟨(lineIsLegal_append position left leftSuffix).mpr
+      ⟨prefixTranspose.leftLegal, suffixTranspose.leftLegal⟩,
+    (lineIsLegal_append position right rightSuffix).mpr
+      ⟨prefixTranspose.rightLegal, rightSuffixLegal⟩, ?_⟩
+  rw [playMoves_append, playMoves_append]
+  exact sameForRepetition_trans suffixTranspose.sameNode
+    (playMoves_sameForRepetition prefixTranspose.sameNode rightSuffix)
+
+/-- A labelled legal path whose target is specified only up to FIDE
+repetition identity. -/
+def RepetitionTrace (start : Position) (moves : List Move) (finish : Position) : Prop :=
+  lineIsLegal start moves ∧ sameForRepetition (playMoves start moves) finish
+
+theorem repetitionTrace_nil_iff (start finish : Position) :
+    RepetitionTrace start [] finish ↔ sameForRepetition start finish := by
+  simp [RepetitionTrace, lineIsLegal, playMoves]
+
+/-- Trace concatenation factors through an intermediate repetition class. -/
+theorem repetitionTrace_append_iff (start finish : Position)
+    (initialMoves suffix : List Move) :
+    RepetitionTrace start (initialMoves ++ suffix) finish ↔
+      ∃ middle, RepetitionTrace start initialMoves middle ∧
+        RepetitionTrace middle suffix finish := by
+  constructor
+  · rintro ⟨legal, same⟩
+    have legalParts := (lineIsLegal_append start initialMoves suffix).mp legal
+    refine ⟨playMoves start initialMoves,
+      ⟨legalParts.1, sameForRepetition_self _⟩,
+      ⟨legalParts.2, ?_⟩⟩
+    simpa [playMoves_append] using same
+  · rintro ⟨middle, ⟨initialLegal, initialSame⟩, ⟨suffixLegal, suffixSame⟩⟩
+    have suffixLegalAtEndpoint :
+        lineIsLegal (playMoves start initialMoves) suffix := by
+      rw [lineIsLegal_eq_of_sameForRepetition initialSame suffix]
+      exact suffixLegal
+    refine ⟨(lineIsLegal_append start initialMoves suffix).mpr
+      ⟨initialLegal, suffixLegalAtEndpoint⟩, ?_⟩
+    rw [playMoves_append]
+    exact sameForRepetition_trans
+      (playMoves_sameForRepetition initialSame suffix) suffixSame
+
+theorem repetitionTrace_target_unique {start first second : Position}
+    {moves : List Move}
+    (firstTrace : RepetitionTrace start moves first)
+    (secondTrace : RepetitionTrace start moves second) :
+    sameForRepetition first second :=
+  sameForRepetition_trans (sameForRepetition_symm firstTrace.2) secondTrace.2
+
+theorem linesRepetitionTransposeAt_iff_exists_commonTarget
+    (position : Position) (left right : List Move) :
+    LinesRepetitionTransposeAt position left right ↔
+      ∃ finish, RepetitionTrace position left finish ∧
+        RepetitionTrace position right finish := by
+  constructor
+  · intro transpose
+    exact ⟨playMoves position left,
+      ⟨transpose.leftLegal, sameForRepetition_self _⟩,
+      ⟨transpose.rightLegal, sameForRepetition_symm transpose.sameNode⟩⟩
+  · rintro ⟨finish, leftTrace, rightTrace⟩
+    exact ⟨leftTrace.1, rightTrace.1,
+      sameForRepetition_trans leftTrace.2 (sameForRepetition_symm rightTrace.2)⟩
 
 /-- A complete move/reply pair, used as the atomic plan block when comparing
 opening move orders. -/
@@ -313,6 +503,28 @@ theorem knight_d4_clock_difference :
 theorem knight_d4_raw_enPassant_difference :
     (playMoves Initial.position knightThenD4).enPassantTarget = some ⟨3, 2⟩ ∧
     (playMoves Initial.position d4ThenKnight).enPassantTarget = none := by
+  native_decide
+
+/-- Despite their different clocks and raw en-passant fields, the two move
+orders admit exactly the same legal continuations. -/
+theorem knight_d4_same_residual_language (continuation : List Move) :
+    lineIsLegal (playMoves Initial.position knightThenD4) continuation ↔
+      lineIsLegal (playMoves Initial.position d4ThenKnight) continuation :=
+  linesRepetitionTransposeAt_continuation_legal_iff
+    knight_d4_repetition_transposition continuation
+
+/-- Every finite-depth exhaustive search also sees the same number of leaves
+from the two endpoints. -/
+theorem knight_d4_same_perft (depth : Nat) :
+    perft depth (playMoves Initial.position knightThenD4) =
+      perft depth (playMoves Initial.position d4ThenKnight) :=
+  perft_eq_of_sameForRepetition depth knight_d4_repetition_transposition.sameNode
+
+/-- For example, appending `...Nf6` preserves the transposition. -/
+theorem knight_d4_then_nf6_repetition_transposition :
+    LinesRepetitionTransposeAt Initial.position
+      (knightThenD4 ++ [g8f6]) (d4ThenKnight ++ [g8f6]) := by
+  apply linesRepetitionTransposeAt_append knight_d4_repetition_transposition
   native_decide
 
 end OpeningExamples

@@ -36,16 +36,6 @@ theorem stalemate_not_checkmate (position : Position) :
   intro stale mate
   exact checkmate_not_stalemate position mate stale
 
-/-- A raw move is an en-passant capture in a position. Legality remains a
-separate condition because a pinned capturing pawn may not actually move. -/
-def isEnPassantCapture (position : Position) (move : Move) : Bool :=
-  position.enPassantTarget == some move.target &&
-    (position.board.pieceAt move.target).isNone &&
-    move.source.file != move.target.file &&
-    match position.board.pieceAt move.source with
-    | some piece => piece.color == position.turn && piece.kind == .pawn
-    | none => false
-
 /-- En-passant state matters for repetition only if an en-passant capture is
 actually legal. This handles the pinned-pawn subtlety in FIDE Article 9.2.3. -/
 def effectiveEnPassantTarget (position : Position) : Option Square :=

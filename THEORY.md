@@ -128,12 +128,29 @@ clocks, so cycle statements would be uninteresting on that graph. Instead,
 identity: board, turn, castling rights, and effective en-passant availability.
 `sameForRepetition_equivalence` proves that this identity is reflexive,
 symmetric, and transitive, so quotienting by it is mathematically well-defined
-rather than merely an informal grouping.
-`phasePotential_eq_of_mutuallyRepetitionReachable` then proves that positions
-with concrete continuations into each other's repetition classes have equal
-phase potential. This is the phase invariant required of strongly connected
-regions in a future operational quotient; proving that legal transitions are
-congruent under repetition identity remains a separate theorem.
+rather than merely an informal grouping. The harder operational theorem is now
+also proved: `legal_iff_of_sameForRepetition` says representatives admit the
+same legal raw moves, and `sameForRepetition_applyUnchecked` says applying any
+raw move preserves the equivalence class. The former proof handles the exact
+FIDE subtlety that unequal raw en-passant fields can affect pseudo-legality but
+cannot affect full legality unless a genuinely legal en-passant capture exists;
+in that case the target is effective and repetition identity forces agreement.
+As a search-level consequence, `perft_eq_of_sameForRepetition` proves that
+equivalent representatives have identical exhaustive leaf counts at every
+finite depth. Checkmate and stalemate are invariant as well, and path lifting
+extends this to the semantic `DeadPosition` property: no representative can
+acquire a mating continuation absent from another. History-sensitive draw
+claims are intentionally properties of `GameState`, not of a repetition node.
+
+`RepetitionNode` is therefore a real quotient type with well-defined legality,
+legal-move lists, move application, successor edges, and finite reachability.
+Path lifting proves that `RepetitionReachable` is equivalent to reachability in
+this quotient graph, rather than merely an endpoint-grouping heuristic.
+`RepetitionNode.phasePotential` descends the irreversible grade to the quotient,
+where `phasePotential_eq_of_mutuallyReachable` proves that every strongly
+connected component has constant potential and
+`no_strict_phase_edge_on_cycle` excludes every strictly descending edge from a
+directed cycle.
 
 The strict theorem `pawn_move_not_on_cycle` proves that after any legal pawn
 move, no legal continuation can return to the source's repetition class. For
@@ -173,6 +190,15 @@ position. `LinesTransposeAt` identifies legal lines with the same complete
 instantaneous endpoint. It is an equivalence relation and is preserved by a
 common legal prefix or suffix.
 
+Operational congruence turns the free monoid of move words into a deterministic
+partial action on `RepetitionNode`: `RepetitionNode.playMoves` is the total
+state transformation and `RepetitionNode.lineIsLegal` specifies its domain.
+`lineIsLegal_eq_of_sameForRepetition` proves equality of the entire residual
+legal language at equivalent positions, while
+`playMoves_sameForRepetition` proves endpoint congruence for arbitrary words.
+`RepetitionTrace` packages a legal labelled path to a quotient-specified target;
+its append theorem factors a trace through an intermediate repetition class.
+
 A `ReplyPlan` packages one move and its reply. This is the correct atomic unit
 for opening commutation because a single ply changes whose turn it is, whereas
 a move/reply pair restores it. `ReplyPlansIndependentAt` states that either
@@ -204,9 +230,14 @@ opening-player notion of transposition. Lean also proves that
 reach the same FIDE repetition node even though the first endpoint has
 halfmove clock `0` and a raw but ineffective `d3` en-passant target, while the
 second has halfmove clock `1` and no raw target. `LinesRepetitionTransposeAt`
-records this quotient notion separately. Exact transpositions support
-congruence under arbitrary common continuations; repetition-node
-transpositions are the right classes for mining real opening databases.
+records this quotient notion separately. Lean now proves the player-facing
+consequence: the two endpoints admit exactly the same legal continuation words,
+produce equal `perft` counts at every depth, and remain transposed after
+appending `...Nf6`. More generally, repetition transpositions are preserved by
+every legal common suffix and compose by substitution of further quotient
+diamonds. Raw clocks, ineffective en-passant fields, and `GameState.prior`
+histories remain deliberately outside that conclusion. These quotient classes
+are the right nodes for mining real opening databases.
 
 ## Novelty status
 
