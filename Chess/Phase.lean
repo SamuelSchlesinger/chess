@@ -155,6 +155,92 @@ def count (rights : CastlingRights) : Nat :=
   rights.whiteKingSide.toNat + rights.whiteQueenSide.toNat +
     rights.blackKingSide.toNat + rights.blackQueenSide.toNat
 
+/-- `after` retains only castling rights that were present in `before`.
+
+This is the natural irreversible order on the four historical right bits. -/
+def Subset (after before : CastlingRights) : Prop :=
+  ∀ color side, after.has color side = true → before.has color side = true
+
+theorem subset_refl (rights : CastlingRights) : rights.Subset rights := by
+  intro _ _ present
+  exact present
+
+theorem subset_trans {first second third : CastlingRights}
+    (firstSecond : first.Subset second) (secondThird : second.Subset third) :
+    first.Subset third := by
+  intro color side present
+  exact secondThird color side (firstSecond color side present)
+
+theorem revoke_subset (rights : CastlingRights) (color : Color) (side : CastleSide) :
+    (rights.revoke color side).Subset rights := by
+  intro queriedColor queriedSide present
+  cases color <;> cases side <;> cases queriedColor <;> cases queriedSide <;>
+    simp [revoke, has] at present ⊢ <;> assumption
+
+theorem revokeKing_subset (rights : CastlingRights) (color : Color) :
+    (rights.revokeKing color).Subset rights := by
+  exact subset_trans (revoke_subset (rights.revoke color .kingSide) color .queenSide)
+    (revoke_subset rights color .kingSide)
+
+private theorem bool_toNat_le_of_true_imp (left right : Bool)
+    (imp : left = true → right = true) : left.toNat ≤ right.toNat := by
+  cases left <;> cases right <;> simp_all
+
+private theorem bool_eq_of_toNat_eq (left right : Bool)
+    (same : left.toNat = right.toNat) : left = right := by
+  cases left <;> cases right <;> simp_all
+
+theorem count_le_of_subset {after before : CastlingRights}
+    (subset : after.Subset before) : after.count ≤ before.count := by
+  have whiteKingLe := bool_toNat_le_of_true_imp
+    after.whiteKingSide before.whiteKingSide (subset .white .kingSide)
+  have whiteQueenLe := bool_toNat_le_of_true_imp
+    after.whiteQueenSide before.whiteQueenSide (subset .white .queenSide)
+  have blackKingLe := bool_toNat_le_of_true_imp
+    after.blackKingSide before.blackKingSide (subset .black .kingSide)
+  have blackQueenLe := bool_toNat_le_of_true_imp
+    after.blackQueenSide before.blackQueenSide (subset .black .queenSide)
+  unfold count
+  omega
+
+/-- Inclusion plus equal cardinality identifies a set of castling rights. -/
+theorem eq_of_subset_of_count_eq {after before : CastlingRights}
+    (subset : after.Subset before) (sameCount : after.count = before.count) :
+    after = before := by
+  have whiteKingLe := bool_toNat_le_of_true_imp
+    after.whiteKingSide before.whiteKingSide (subset .white .kingSide)
+  have whiteQueenLe := bool_toNat_le_of_true_imp
+    after.whiteQueenSide before.whiteQueenSide (subset .white .queenSide)
+  have blackKingLe := bool_toNat_le_of_true_imp
+    after.blackKingSide before.blackKingSide (subset .black .kingSide)
+  have blackQueenLe := bool_toNat_le_of_true_imp
+    after.blackQueenSide before.blackQueenSide (subset .black .queenSide)
+  unfold count at sameCount
+  have whiteKingEq : after.whiteKingSide = before.whiteKingSide := by
+    apply bool_eq_of_toNat_eq
+    omega
+  have whiteQueenEq : after.whiteQueenSide = before.whiteQueenSide := by
+    apply bool_eq_of_toNat_eq
+    omega
+  have blackKingEq : after.blackKingSide = before.blackKingSide := by
+    apply bool_eq_of_toNat_eq
+    omega
+  have blackQueenEq : after.blackQueenSide = before.blackQueenSide := by
+    apply bool_eq_of_toNat_eq
+    omega
+  cases after
+  cases before
+  simp_all
+
+theorem count_lt_of_subset_of_ne {after before : CastlingRights}
+    (subset : after.Subset before) (different : after ≠ before) :
+    after.count < before.count := by
+  have countLe := count_le_of_subset subset
+  have countNe : after.count ≠ before.count := by
+    intro sameCount
+    exact different (eq_of_subset_of_count_eq subset sameCount)
+  omega
+
 theorem count_revoke_le (rights : CastlingRights) (color : Color) (side : CastleSide) :
     (rights.revoke color side).count ≤ rights.count := by
   cases rights

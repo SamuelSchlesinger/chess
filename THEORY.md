@@ -126,18 +126,38 @@ every finite continuation. Literal `Position` values contain advancing move
 clocks, so cycle statements would be uninteresting on that graph. Instead,
 `RepetitionReachable` projects concrete continuations to FIDE repetition
 identity: board, turn, castling rights, and effective en-passant availability.
-`phasePotential_eq_of_mutuallyRepetitionReachable` then proves that every
-strongly connected component of this clock-erased quotient has constant phase
-potential. Collapsing those components exposes a directed acyclic structure of
-irreversible commitments.
+`sameForRepetition_equivalence` proves that this identity is reflexive,
+symmetric, and transitive, so quotienting by it is mathematically well-defined
+rather than merely an informal grouping.
+`phasePotential_eq_of_mutuallyRepetitionReachable` then proves that positions
+with concrete continuations into each other's repetition classes have equal
+phase potential. This is the phase invariant required of strongly connected
+regions in a future operational quotient; proving that legal transitions are
+congruent under repetition identity remains a separate theorem.
 
-The strict theorem `pawn_move_not_on_cycle` proves that no legal pawn move can
-lie on a directed cycle of the repetition quotient. For example, Lean computes
-that `1. e4` consumes exactly two units of potential and proves that no legal
-continuation can return to the initial position's FIDE repetition class. In
+The strict theorem `pawn_move_not_on_cycle` proves that after any legal pawn
+move, no legal continuation can return to the source's repetition class. For
+example, Lean computes that `1. e4` consumes exactly two units of potential and
+proves that no legal continuation can return to the initial position's FIDE
+repetition class. In
 contrast, `1. Nf3` preserves the phase grade. Grade preservation is only a
 necessary condition for reversibility; it does not claim that every quiet move
 can actually be undone.
+
+`move_on_repetition_cycle_is_quiet` gives the structural information available
+on any edge whose successor can return to the source's repetition class: it
+moves a non-pawn to an empty square, preserves all castling rights, and
+increments the halfmove clock.
+Ordinary captures are excluded by strict occupied-target accounting; en
+passant is excluded as a pawn move; castling and first king or rook moves are
+excluded when they consume a right. The legal shuffle
+
+```text
+1. Nf3 Nf6 2. Ng1 Ng8
+```
+
+is a non-vacuity witness: it returns to the initial FIDE repetition node, and
+Lean derives that its first edge satisfies the quiet-kernel conclusion.
 
 ## Opening lines and transpositions
 
@@ -145,6 +165,21 @@ can actually be undone.
 `reachable_playMoves_of_lineIsLegal` turns a successful check into a proof that
 the line is a path in the legal position graph. This lets opening data feed the
 same graph theory used by the phase results.
+
+`playMoves_append` and `lineIsLegal_append` make legal lines into a small trace
+algebra: concatenation composes endpoint transformations, and legality splits
+into legality of the prefix plus legality of the suffix at the intermediate
+position. `LinesTransposeAt` identifies legal lines with the same complete
+instantaneous endpoint. It is an equivalence relation and is preserved by a
+common legal prefix or suffix.
+
+A `ReplyPlan` packages one move and its reply. This is the correct atomic unit
+for opening commutation because a single ply changes whose turn it is, whereas
+a move/reply pair restores it. `ReplyPlansIndependentAt` states that either
+plan is legal first, remains legal after the other, and that their endpoint
+transformations commute. `replyPlansCommute_iff_independent` proves that these
+semantic independence obligations are exactly a legal four-ply move-order
+diamond.
 
 `independent_knight_development_transposes` proves a first exact move-order
 diamond. Both
@@ -154,11 +189,24 @@ diamond. Both
 1. Nc3 Nc6 2. Nf3 Nf6
 ```
 
-are certified legal and reach extensionally identical complete positions,
-including turn, castling rights, en-passant state, and both clocks. The next
-general step is to replace this computed example with sufficient
-noninterference conditions under which two same-side plans commute around the
-opponent's replies.
+are certified legal and reach extensionally identical complete instantaneous
+positions, including turn, castling rights, raw en-passant state, and both
+clocks. Their `GameState.prior` histories are not identified.
+
+Exact endpoint equality is deliberately stronger than the ordinary
+opening-player notion of transposition. Lean also proves that
+
+```text
+1. Nf3 d5 2. d4
+1. d4 d5 2. Nf3
+```
+
+reach the same FIDE repetition node even though the first endpoint has
+halfmove clock `0` and a raw but ineffective `d3` en-passant target, while the
+second has halfmove clock `1` and no raw target. `LinesRepetitionTransposeAt`
+records this quotient notion separately. Exact transpositions support
+congruence under arbitrary common continuations; repetition-node
+transpositions are the right classes for mining real opening databases.
 
 ## Novelty status
 

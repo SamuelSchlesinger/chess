@@ -67,6 +67,27 @@ def sameForRepetition (left right : Position) : Bool :=
     sameForRepetition position position := by
   simp [sameForRepetition]
 
+theorem sameForRepetition_symm {left right : Position}
+    (same : sameForRepetition left right) : sameForRepetition right left := by
+  simp [sameForRepetition] at same ⊢
+  have boardEq := Board.eq_of_same same.1.1.1
+  rw [boardEq]
+  simp_all
+
+theorem sameForRepetition_trans {first second third : Position}
+    (firstSecond : sameForRepetition first second)
+    (secondThird : sameForRepetition second third) :
+    sameForRepetition first third := by
+  simp [sameForRepetition] at firstSecond secondThird ⊢
+  have firstBoardEq := Board.eq_of_same firstSecond.1.1.1
+  have secondBoardEq := Board.eq_of_same secondThird.1.1.1
+  rw [firstBoardEq, secondBoardEq]
+  simp_all
+
+theorem sameForRepetition_equivalence :
+    Equivalence (fun left right : Position => sameForRepetition left right) :=
+  ⟨sameForRepetition_self, sameForRepetition_symm, sameForRepetition_trans⟩
+
 /-- Number of occurrences of the current repetition-equivalence class in the
 recorded game, including the current position. -/
 def repetitionCount (state : GameState) : Nat :=

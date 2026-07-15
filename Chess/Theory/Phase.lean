@@ -32,8 +32,8 @@ theorem phasePotential_eq_of_sameForRepetition {left right : Position}
   have rightsEq := same.1.2
   simp [Position.phasePotential, boardEq, rightsEq]
 
-/-- Reachability in the clock-erased FIDE position graph: some concrete future
-belongs to the target's repetition-equivalence class. -/
+/-- Concrete reachability projected only at its target: some future position
+belongs to the target's FIDE repetition-equivalence class. -/
 def RepetitionReachable (start target : Position) : Prop :=
   ∃ future, Position.Reachable start future ∧ sameForRepetition future target
 
@@ -44,8 +44,8 @@ theorem repetitionReachable_phasePotential_le {start target : Position}
   rw [← phasePotential_eq_of_sameForRepetition same]
   exact reachable_phasePotential_le path
 
-/-- Positions in the same strongly connected component of the FIDE repetition
-quotient have the same phase potential. -/
+/-- Positions with concrete continuations into each other's FIDE repetition
+classes have the same phase potential. -/
 theorem phasePotential_eq_of_mutuallyRepetitionReachable {left right : Position}
     (forward : RepetitionReachable left right)
     (backward : RepetitionReachable right left) :
@@ -53,7 +53,8 @@ theorem phasePotential_eq_of_mutuallyRepetitionReachable {left right : Position}
   exact Nat.le_antisymm (repetitionReachable_phasePotential_le backward)
     (repetitionReachable_phasePotential_le forward)
 
-/-- An edge on a directed cycle of the repetition quotient preserves phase. -/
+/-- An edge whose successor can return to the source's repetition class
+preserves phase. -/
 theorem successor_on_repetition_cycle_phasePotential_eq {position next : Position}
     (successor : Position.Successor position next)
     (returns : RepetitionReachable next position) :
@@ -61,8 +62,8 @@ theorem successor_on_repetition_cycle_phasePotential_eq {position next : Positio
   exact Nat.le_antisymm (successor_phasePotential_le successor)
     (repetitionReachable_phasePotential_le returns)
 
-/-- No strictly irreversible edge can lie on a directed cycle of the
-repetition quotient. -/
+/-- No strictly irreversible edge admits a continuation back to its source's
+repetition class. -/
 theorem no_phaseDrop_on_repetition_cycle {position next : Position}
     (drop : PhaseDrop position next) :
     ¬RepetitionReachable next position := by
@@ -70,9 +71,9 @@ theorem no_phaseDrop_on_repetition_cycle {position next : Position}
   have reverseLe := repetitionReachable_phasePotential_le returns
   exact (Nat.not_lt_of_ge reverseLe) drop.2
 
-/-- **Pawn-cycle purity.** A legal pawn move can never belong to a directed
-cycle of the FIDE repetition quotient. Capturing pawn moves, en passant, double
-steps, and promotions are all covered by the same theorem. -/
+/-- **Pawn-cycle purity.** After a legal pawn move, no continuation can return
+to the source's FIDE repetition class. Captures, en passant, double steps, and
+promotions are all covered by the same theorem. -/
 theorem pawn_move_not_on_cycle (position : Position) (move : Move) (piece : Piece)
     (occupied : position.board.pieceAt move.source = some piece)
     (isPawn : piece.kind = .pawn) (legal : Legal position move) :
@@ -82,5 +83,55 @@ theorem pawn_move_not_on_cycle (position : Position) (move : Move) (piece : Piec
   have strict := phasePotential_applyUnchecked_lt_of_pawn
     position move piece occupied isPawn legal
   omega
+
+/-- **Quiet-kernel theorem.** Every legal edge whose successor can return to
+the source's FIDE repetition class is a quiet non-pawn move that preserves
+castling rights. Consequently the concrete halfmove clock advances across
+every such edge.
+
+The occupied-target clause rules out ordinary captures; en passant is ruled
+out by the non-pawn clause. Rights preservation also rules out castling and any
+first king or rook move that consumes a surviving right. -/
+theorem move_on_repetition_cycle_is_quiet (position : Position) (move : Move)
+    (legal : Legal position move)
+    (returns : RepetitionReachable (applyUnchecked position move) position) :
+    ∃ piece,
+      position.board.pieceAt move.source = some piece ∧
+      piece.kind ≠ .pawn ∧
+      position.board.pieceAt move.target = none ∧
+      (applyUnchecked position move).castlingRights = position.castlingRights ∧
+      (applyUnchecked position move).halfmoveClock = position.halfmoveClock + 1 := by
+  have pseudo := ((legal_iff position move).mp legal).1
+  have phaseEq := successor_on_repetition_cycle_phasePotential_eq
+    (position := position) (next := applyUnchecked position move)
+    ⟨move, legal, rfl⟩ returns
+  unfold PseudoLegal at pseudo
+  cases occupied : position.board.pieceAt move.source with
+  | none => simp [isPseudoLegal, occupied] at pseudo
+  | some piece =>
+      have notPawn : piece.kind ≠ .pawn := by
+        intro isPawn
+        have strict := phasePotential_applyUnchecked_lt_of_pawn
+          position move piece occupied isPawn legal
+        omega
+      have targetEmpty : position.board.pieceAt move.target = none := by
+        cases targetOccupied : position.board.pieceAt move.target with
+        | none => rfl
+        | some captured =>
+            have strict := phasePotential_applyUnchecked_lt_of_occupied_target
+              position move captured targetOccupied legal
+            omega
+      have rightsEq : (applyUnchecked position move).castlingRights =
+          position.castlingRights := by
+        by_cases same : (applyUnchecked position move).castlingRights =
+            position.castlingRights
+        · exact same
+        · have strict := phasePotential_applyUnchecked_lt_of_castlingRights_ne
+            position move legal same
+          omega
+      have clockEq : (applyUnchecked position move).halfmoveClock =
+          position.halfmoveClock + 1 := by
+        simp [applyUnchecked, occupied, notPawn, targetEmpty]
+      exact ⟨piece, rfl, notPawn, targetEmpty, rightsEq, clockEq⟩
 
 end Chess.Theory

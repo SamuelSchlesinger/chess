@@ -358,6 +358,27 @@ private theorem boardAfterOrdinary_phase_le (position : Position) (move : Move) 
   · exact Nat.le_trans (Board.phasePotential_clear_le moved _) movedLe
   · exact movedLe
 
+private theorem boardAfterOrdinary_phase_lt_of_occupied_target (position : Position)
+    (move : Move) (piece captured : Piece)
+    (occupied : position.board.pieceAt move.source = some piece)
+    (targetOccupied : position.board.pieceAt move.target = some captured)
+    (ordinary : ordinaryPseudoLegal position move piece) :
+    (boardAfterOrdinary position move piece).phasePotential <
+      position.board.phasePotential := by
+  let moved := (position.board.clear move.source).set move.target
+    (some (promotedPiece piece move))
+  have balance := Board.phasePotential_clear_set_add position.board
+    (ordinary_source_ne_target position move piece occupied ordinary)
+    (some (promotedPiece piece move))
+  rw [occupied, targetOccupied] at balance
+  have replacementLe := promotedPiece_phase_le position move piece ordinary
+  have capturedPos := piecePhasePotential_some_pos move.target captured
+  have movedLt : moved.phasePotential < position.board.phasePotential := by
+    change ((position.board.clear move.source).set move.target
+      (some (promotedPiece piece move))).phasePotential < position.board.phasePotential
+    omega
+  simpa [boardAfterOrdinary, moved, targetOccupied] using movedLt
+
 private theorem boardAfterOrdinary_phase_lt_of_pawn (position : Position) (move : Move)
     (piece : Piece) (occupied : position.board.pieceAt move.source = some piece)
     (isPawn : piece.kind = .pawn)
@@ -382,6 +403,33 @@ private theorem boardAfterOrdinary_phase_lt_of_pawn (position : Position) (move 
   split
   · exact Nat.lt_of_le_of_lt (Board.phasePotential_clear_le moved _) movedLt
   · exact movedLt
+
+private theorem castlePseudoLegal_target_empty (position : Position) (move : Move)
+    (color : Color) (castle : castlePseudoLegal position move color) :
+    position.board.pieceAt move.target = none := by
+  cases sideEq : castleSide? color move with
+  | none => simp [castlePseudoLegal, sideEq] at castle
+  | some side =>
+      simp [castlePseudoLegal, sideEq] at castle
+      have targetEq : move.target = (castleData color side).kingTarget := by
+        cases color <;> cases side
+        · simp [castleSide?, castleData] at sideEq ⊢
+          exact sideEq.2
+        · simp [castleSide?, castleData] at sideEq ⊢
+          by_cases kingSideTarget : move.target = Square.g1
+          · simp [kingSideTarget] at sideEq
+          · simp [kingSideTarget] at sideEq
+            exact sideEq.2
+        · simp [castleSide?, castleData] at sideEq ⊢
+          exact sideEq.2
+        · simp [castleSide?, castleData] at sideEq ⊢
+          by_cases kingSideTarget : move.target = Square.g8
+          · simp [kingSideTarget] at sideEq
+          · simp [kingSideTarget] at sideEq
+            exact sideEq.2
+      rw [targetEq]
+      apply castle.1.1.1.2
+      cases color <;> cases side <;> decide
 
 private theorem boardAfterCastle_phase_eq (position : Position) (move : Move) (color : Color)
     (occupied : position.board.pieceAt move.source = some ⟨color, .king⟩)
@@ -459,6 +507,19 @@ private theorem revokeRookSquare_count_le (rights : CastlingRights) (square : Sq
         · exact CastlingRights.count_revoke_le rights .black .kingSide
         · exact Nat.le_refl _
 
+private theorem revokeRookSquare_subset (rights : CastlingRights) (square : Square) :
+    (revokeRookSquare rights square).Subset rights := by
+  unfold revokeRookSquare
+  split
+  · exact CastlingRights.revoke_subset rights .white .queenSide
+  · split
+    · exact CastlingRights.revoke_subset rights .white .kingSide
+    · split
+      · exact CastlingRights.revoke_subset rights .black .queenSide
+      · split
+        · exact CastlingRights.revoke_subset rights .black .kingSide
+        · exact CastlingRights.subset_refl rights
+
 private theorem rightsAfter_count_le (position : Position) (move : Move) (piece : Piece) :
     (rightsAfter position move piece).count ≤ position.castlingRights.count := by
   rcases piece with ⟨color, kind⟩
@@ -474,6 +535,22 @@ private theorem rightsAfter_count_le (position : Position) (move : Move) (piece 
         (revokeRookSquare_count_le position.castlingRights move.source)
   | pawn | knight | bishop | queen =>
       exact revokeRookSquare_count_le position.castlingRights move.target
+
+private theorem rightsAfter_subset (position : Position) (move : Move) (piece : Piece) :
+    (rightsAfter position move piece).Subset position.castlingRights := by
+  rcases piece with ⟨color, kind⟩
+  cases kind with
+  | king =>
+      exact CastlingRights.subset_trans
+        (revokeRookSquare_subset (position.castlingRights.revokeKing color) move.target)
+        (CastlingRights.revokeKing_subset position.castlingRights color)
+  | rook =>
+      exact CastlingRights.subset_trans
+        (revokeRookSquare_subset
+          (revokeRookSquare position.castlingRights move.source) move.target)
+        (revokeRookSquare_subset position.castlingRights move.source)
+  | pawn | knight | bishop | queen =>
+      exact revokeRookSquare_subset position.castlingRights move.target
 
 private theorem ordinaryKing_castleSide_none (position : Position) (move : Move) (color : Color)
     (ordinary : ordinaryPseudoLegal position move ⟨color, .king⟩) :
@@ -547,6 +624,29 @@ private theorem boardAfter_phase_le (position : Position) (move : Move) (piece :
     exact Nat.le_of_eq
       (boardAfterCastle_phase_eq position move color occupied castleMove.2)
 
+private theorem boardAfter_phase_lt_of_occupied_target (position : Position) (move : Move)
+    (piece captured : Piece)
+    (occupied : position.board.pieceAt move.source = some piece)
+    (targetOccupied : position.board.pieceAt move.target = some captured)
+    (moves : ordinaryPseudoLegal position move piece ∨
+      (piece.kind = .king ∧ castlePseudoLegal position move piece.color)) :
+    (boardAfter position move piece).phasePotential < position.board.phasePotential := by
+  rcases moves with ordinary | castleMove
+  · rcases piece with ⟨color, kind⟩
+    cases kind with
+    | king =>
+        have noCastle := ordinaryKing_castleSide_none position move color ordinary
+        simpa [boardAfter, noCastle] using
+          boardAfterOrdinary_phase_lt_of_occupied_target position move
+            ⟨color, .king⟩ captured occupied targetOccupied ordinary
+    | pawn | knight | bishop | rook | queen =>
+        simpa [boardAfter] using
+          boardAfterOrdinary_phase_lt_of_occupied_target position move
+            ⟨color, _⟩ captured occupied targetOccupied ordinary
+  · have targetEmpty := castlePseudoLegal_target_empty position move piece.color castleMove.2
+    rw [targetOccupied] at targetEmpty
+    contradiction
+
 private theorem applyUnchecked_board_of_occupied (position : Position) (move : Move)
     (piece : Piece) (occupied : position.board.pieceAt move.source = some piece) :
     (applyUnchecked position move).board = boardAfter position move piece := by
@@ -591,6 +691,66 @@ theorem phasePotential_applyUnchecked_le (position : Position) (move : Move)
     ((legal_iff position move).mp legal).1
 
 set_option maxHeartbeats 500000
+
+/-- Every legal move to an occupied target strictly consumes phase potential.
+Together with pawn strictness, this covers every form of capture, including en
+passant. -/
+theorem phasePotential_applyUnchecked_lt_of_occupied_target (position : Position)
+    (move : Move) (captured : Piece)
+    (targetOccupied : position.board.pieceAt move.target = some captured)
+    (legal : Legal position move) :
+    (applyUnchecked position move).phasePotential < position.phasePotential := by
+  have pseudo := ((legal_iff position move).mp legal).1
+  unfold PseudoLegal at pseudo
+  cases occupied : position.board.pieceAt move.source with
+  | none => simp [isPseudoLegal, occupied] at pseudo
+  | some piece =>
+      unfold isPseudoLegal at pseudo
+      rw [occupied] at pseudo
+      have moves : ordinaryPseudoLegal position move piece ∨
+          (piece.kind = .king ∧ castlePseudoLegal position move piece.color) := by
+        cases colorEq : piece.color == position.turn
+        · simp [colorEq] at pseudo
+        · simpa [colorEq] using pseudo
+      have boardLt := boardAfter_phase_lt_of_occupied_target position move piece captured
+        occupied targetOccupied moves
+      have rightsLe := rightsAfter_count_le position move piece
+      rw [Position.phasePotential, Position.phasePotential,
+        applyUnchecked_board_of_occupied position move piece occupied,
+        applyUnchecked_rights_of_occupied position move piece occupied]
+      omega
+
+/-- A legal move that actually changes the historical castling rights strictly
+consumes phase potential. This includes castling, first king or rook moves, and
+captures of still-entitled home rooks. -/
+theorem phasePotential_applyUnchecked_lt_of_castlingRights_ne (position : Position)
+    (move : Move) (legal : Legal position move)
+    (changed : (applyUnchecked position move).castlingRights ≠ position.castlingRights) :
+    (applyUnchecked position move).phasePotential < position.phasePotential := by
+  have pseudo := ((legal_iff position move).mp legal).1
+  unfold PseudoLegal at pseudo
+  cases occupied : position.board.pieceAt move.source with
+  | none => simp [isPseudoLegal, occupied] at pseudo
+  | some piece =>
+      unfold isPseudoLegal at pseudo
+      rw [occupied] at pseudo
+      have moves : ordinaryPseudoLegal position move piece ∨
+          (piece.kind = .king ∧ castlePseudoLegal position move piece.color) := by
+        cases colorEq : piece.color == position.turn
+        · simp [colorEq] at pseudo
+        · simpa [colorEq] using pseudo
+      have boardLe := boardAfter_phase_le position move piece occupied moves
+      have rightsDifferent : rightsAfter position move piece ≠ position.castlingRights := by
+        intro same
+        apply changed
+        rw [applyUnchecked_rights_of_occupied position move piece occupied]
+        exact same
+      have rightsLt := CastlingRights.count_lt_of_subset_of_ne
+        (rightsAfter_subset position move piece) rightsDifferent
+      rw [Position.phasePotential, Position.phasePotential,
+        applyUnchecked_board_of_occupied position move piece occupied,
+        applyUnchecked_rights_of_occupied position move piece occupied]
+      omega
 
 /-- Every legal pawn move strictly consumes irreversible phase potential. This
 includes captures, double steps, en passant, and promotions. -/
