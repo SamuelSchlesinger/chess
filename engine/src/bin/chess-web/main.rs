@@ -238,6 +238,10 @@ fn handle_connection(stream: TcpStream, config: &Config) {
             Err(e) => respond_bad_request(&mut stream, &e),
         },
         ("GET", "/api/analyze") => handle_analyze(&mut stream, &req, config),
+        ("GET", "/api/bestmove") => match handle_bestmove(&req, config) {
+            Ok(json) => respond_json(&mut stream, &json),
+            Err(e) => respond_bad_request(&mut stream, &e),
+        },
         ("GET", "/api/evalseries") => handle_evalseries(&mut stream, &req, config),
         ("POST", "/api/pgn") => match handle_pgn(&req) {
             Ok(json) => respond_json(&mut stream, &json),
@@ -554,6 +558,54 @@ fn send_done(stream: &mut TcpStream, root: &Board, a: &Analysis) -> std::io::Res
             a.depth,
         ),
     )
+}
+
+// --- /api/bestmove ---
+
+/// Synchronous best-move lookup for play-against-engine mode.
+/// Returns `{"uci": "e2e4", "san": "e4"}` after searching for `movetime` ms.
+fn handle_bestmove(req: &Request, config: &Config) -> Result<String, String> {
+    let line = line_from_req(req)?;
+    if line.game.outcome().is_over() {
+        return Err("game is over".to_string());
+    }
+    let movetime: u64 = req.num("movetime", 1000, 100, 30_000);
+    let spec = config.engine(req);
+    let board = line.game.board().clone();
+
+    let mv = match &spec.kind {
+        EngineKind::Uci(cmd) => {
+            let mut engine = take_uci(spec, cmd, config.hash_mb)
+                .map_err(|e| format!("engine '{}': {e}", spec.label))?;
+            let go = GoParams { multipv: 1, movetime, depth: 0 };
+            let best_str = engine
+                .search(&uci_position(&line), &go, |_| true)
+                .map_err(|e| e)?
+                .ok_or_else(|| "engine returned no move".to_string())?;
+            let mv = board
+                .parse_uci(&best_str)
+                .ok_or_else(|| format!("engine returned illegal move: {best_str}"))?;
+            return_uci(&spec.id, engine);
+            mv
+        }
+        _ => {
+            let mut engine = take_builtin(spec, config.hash_mb)?;
+            let keys = line.game.position_keys();
+            engine.set_history(&keys[..keys.len() - 1]);
+            let a = engine.analyze(&board, &Limits::movetime(movetime));
+            return_builtin(&spec.id, engine);
+            if !board.legal_moves().contains(a.best_move) {
+                return Err("engine has no legal move".to_string());
+            }
+            a.best_move
+        }
+    };
+
+    Ok(format!(
+        "{{\"uci\":{},\"san\":{}}}",
+        jstr(&mv.to_uci()),
+        jstr(&board.san(mv)),
+    ))
 }
 
 // --- /api/analyze ---

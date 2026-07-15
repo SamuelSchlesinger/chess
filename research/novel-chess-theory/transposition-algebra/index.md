@@ -82,7 +82,7 @@ compute.
    basis relations.
 5. Optimize the canonical arborescence for a personal repertoire and human
    explanation length rather than UCI shortlex.
-6. Upgrade `~/projects/games/chess/src/bin/chess-trainer/book.rs` from raw
+6. Upgrade `engine/src/bin/chess-trainer/book.rs` from raw
    prefix matching to an exact position index plus a separate route/deviation
    index.
 7. Run the matched transfer trial before expanding the exercise inventory.

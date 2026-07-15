@@ -289,7 +289,8 @@ dialog {
 }
 dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 dialog h3 { margin: 0 0 10px; font-size: 15px; }
-dialog .row { display: flex; gap: 8px; margin-top: 10px; }
+dialog .row { display: flex; gap: 12px; margin-top: 10px; align-items: flex-end; flex-wrap: wrap; }
+dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 dialog input[type="text"], dialog textarea {
   width: 100%;
   background: var(--panel-2);

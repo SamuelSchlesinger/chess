@@ -43,7 +43,7 @@ by the source.
 
 - [`Chess/RepetitionKey.lean`](../../../Chess/RepetitionKey.lean), local formalization snapshot inspected 14 July 2026 — Proves exact executable key equality equivalent to the modeled FIDE repetition relation.
 - [`Chess/Theory/PawnGeometry.lean`](../../../Chess/Theory/PawnGeometry.lean), local formalization snapshot inspected 14 July 2026 — Supplies the geometric pawn-square control theorem and explicitly states what a later KPK classification must add.
-- [`src/board.rs`](../../../../../games/chess/src/board.rs), local Rust engine snapshot inspected 14 July 2026 — Defines the Polyglot-compatible board hash and adjacent-pawn en-passant contribution.
-- [`src/game.rs`](../../../../../games/chess/src/game.rs), local Rust engine snapshot inspected 14 July 2026 — Reuses board hashes for repetition counting and game outcomes.
-- [`src/search.rs`](../../../../../games/chess/src/search.rs), local Rust engine snapshot inspected 14 July 2026 — Reuses the same keys for search-path repetition detection.
-- [`src/bin/chess-trainer`](../../../../../games/chess/src/bin/chess-trainer), local Rust trainer snapshot inspected 14 July 2026 — Provides the current opening-book, UCI grading, short-rep, and session-statistics delivery layer.
+- [`engine/src/board.rs`](../../../engine/src/board.rs), imported Rust snapshot inspected 14 July 2026 — Defines the Polyglot-compatible board hash and adjacent-pawn en-passant contribution.
+- [`engine/src/game.rs`](../../../engine/src/game.rs), imported Rust snapshot inspected 14 July 2026 — Reuses board hashes for repetition counting and game outcomes.
+- [`engine/src/search.rs`](../../../engine/src/search.rs), imported Rust snapshot inspected 14 July 2026 — Reuses the same keys for search-path repetition detection.
+- [`engine/src/bin/chess-trainer`](../../../engine/src/bin/chess-trainer), imported Rust snapshot inspected 14 July 2026 — Provides the current opening-book, UCI grading, short-rep, and session-statistics delivery layer.

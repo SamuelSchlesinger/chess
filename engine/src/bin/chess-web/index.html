@@ -14,6 +14,7 @@
   <div class="toolbar">
     <button id="btn-new" title="New game">New</button>
     <button id="btn-flip" title="Flip board (f)">Flip</button>
+    <button id="btn-play" title="Play against an engine">Play</button>
     <button id="btn-fen" title="Set up or copy a position">FEN</button>
     <button id="btn-pgn" title="Import or export a game">PGN</button>
   </div>
@@ -64,6 +65,37 @@
     </section>
   </aside>
 </main>
+
+<dialog id="dlg-play">
+  <h3>Play against engine</h3>
+  <div class="row">
+    <label>You play as
+      <select id="play-color">
+        <option value="w">White</option>
+        <option value="b">Black</option>
+        <option value="r">Random</option>
+      </select>
+    </label>
+    <label>Opponent
+      <select id="play-engine"></select>
+    </label>
+  </div>
+  <div class="row">
+    <label>Engine strength
+      <select id="play-movetime">
+        <option value="200">Bullet (0.2s/move)</option>
+        <option value="500">Fast (0.5s/move)</option>
+        <option value="1000" selected>Normal (1s/move)</option>
+        <option value="3000">Strong (3s/move)</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <button id="play-start">Start game</button>
+    <button id="play-close">Cancel</button>
+  </div>
+  <div class="hint">Starts a new game from the initial position. The engine uses the selected movetime per move.</div>
+</dialog>
 
 <dialog id="dlg-fen">
   <h3>Position (FEN)</h3>

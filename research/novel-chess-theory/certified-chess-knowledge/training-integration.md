@@ -1,7 +1,7 @@
 # From certified claims to a personal chess trainer
 
-The formal repository should be the authority for exact chess claims; the Rust
-repository at `~/projects/games/chess` should be the fast delivery layer.  The
+The Lean layer should be the authority for exact chess claims; the Rust crate
+at `engine/` should be the fast delivery layer. The
 bridge is not “show the user a proof.”  It is a small, versioned knowledge item
 that turns one theorem into a rule, its boundary, contrastive exceptions, and
 exercises whose answers can be checked independently.
@@ -187,26 +187,26 @@ semantics.
 
 ## Local References
 
-- **trainer-book** — `src/bin/chess-trainer/book.rs`, embedded opening book and prefix-selection logic, local `~/projects/games/chess` repository snapshot inspected 14 July 2026.
-- **trainer-main** — `src/bin/chess-trainer/main.rs`, trainer HTTP API and fixed-depth UCI grading, local `~/projects/games/chess` repository snapshot inspected 14 July 2026.
-- **trainer-app** — `src/bin/chess-trainer/app.js`, session state, six-move reps, and statistics, local `~/projects/games/chess` repository snapshot inspected 14 July 2026.
+- **trainer-book** — `engine/src/bin/chess-trainer/book.rs`, embedded opening book and prefix-selection logic, imported Rust snapshot inspected 14 July 2026.
+- **trainer-main** — `engine/src/bin/chess-trainer/main.rs`, trainer HTTP API and fixed-depth UCI grading, imported Rust snapshot inspected 14 July 2026.
+- **trainer-app** — `engine/src/bin/chess-trainer/app.js`, session state, six-move reps, and statistics, imported Rust snapshot inspected 14 July 2026.
 - **fide2023** — International Chess Federation, *FIDE Laws of Chess Taking Effect from 1 January 2023*, Articles 5.2.2, 9.2.3, 9.3, and 9.6, approved 7 August 2022.
 - **lean-repetition-key** — `Chess/RepetitionKey.lean`, exact executable repetition key and equivalence theorem, local formalization repository snapshot inspected 14 July 2026.
-- **rust-board** — `src/board.rs`, `Board::hash` and `ep_hash_contribution`, local `~/projects/games/chess` repository snapshot inspected 14 July 2026.
-- **rust-game** — `src/game.rs`, `Game::position_keys` and `Game::repetition_count`, local `~/projects/games/chess` repository snapshot inspected 14 July 2026.
-- **rust-search** — `src/search.rs`, search-history and repetition detection, local `~/projects/games/chess` repository snapshot inspected 14 July 2026.
-- **rust-ep-test** — `tests/legal_movegen.rs`, `ep_discovered_check_is_illegal`, local `~/projects/games/chess` repository snapshot inspected 14 July 2026.
+- **rust-board** — `engine/src/board.rs`, `Board::hash` and `ep_hash_contribution`, imported Rust snapshot inspected 14 July 2026.
+- **rust-game** — `engine/src/game.rs`, `Game::position_keys` and `Game::repetition_count`, imported Rust snapshot inspected 14 July 2026.
+- **rust-search** — `engine/src/search.rs`, search-history and repetition detection, imported Rust snapshot inspected 14 July 2026.
+- **rust-ep-test** — `engine/tests/legal_movegen.rs`, `ep_discovered_check_is_illegal`, imported Rust snapshot inspected 14 July 2026.
 - **roediger-karpicke2006** — Henry L. Roediger III and Jeffrey D. Karpicke, “Test-Enhanced Learning: Taking Memory Tests Improves Long-Term Retention,” *Psychological Science* 17(3), 2006, 249–255. DOI 10.1111/j.1467-9280.2006.01693.x.
 - **cepeda2008** — Nicholas J. Cepeda, Edward Vul, Doug Rohrer, John T. Wixted, and Harold Pashler, “Spacing Effects in Learning: A Temporal Ridgeline of Optimal Retention,” *Psychological Science* 19(11), 2008, 1095–1102. DOI 10.1111/j.1467-9280.2008.02209.x.
 
-[trainer-book]: ../../../../../games/chess/src/bin/chess-trainer/book.rs
-[trainer-main]: ../../../../../games/chess/src/bin/chess-trainer/main.rs
-[trainer-app]: ../../../../../games/chess/src/bin/chess-trainer/app.js
+[trainer-book]: ../../../engine/src/bin/chess-trainer/book.rs
+[trainer-main]: ../../../engine/src/bin/chess-trainer/main.rs
+[trainer-app]: ../../../engine/src/bin/chess-trainer/app.js
 [fide2023]: https://handbook.fide.com/chapter/E012023
 [lean-repetition-key]: ../../../Chess/RepetitionKey.lean
-[rust-board]: ../../../../../games/chess/src/board.rs
-[rust-game]: ../../../../../games/chess/src/game.rs
-[rust-search]: ../../../../../games/chess/src/search.rs
-[rust-ep-test]: ../../../../../games/chess/tests/legal_movegen.rs
+[rust-board]: ../../../engine/src/board.rs
+[rust-game]: ../../../engine/src/game.rs
+[rust-search]: ../../../engine/src/search.rs
+[rust-ep-test]: ../../../engine/tests/legal_movegen.rs
 [roediger-karpicke2006]: https://doi.org/10.1111/j.1467-9280.2006.01693.x
 [cepeda2008]: https://doi.org/10.1111/j.1467-9280.2008.02209.x

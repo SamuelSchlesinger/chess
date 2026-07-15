@@ -17,8 +17,8 @@ The corpus establishes (1) and the 205-chord theorem establishes (2). Whether
 
 ## What the current trainer gets wrong
 
-The trainer in `~/projects/games/chess` currently embeds 21 SAN main lines.
-Its `src/bin/chess-trainer/book.rs` indexes the book by exact UCI sequence
+The trainer in `engine/` currently embeds 21 SAN main lines. Its
+`src/bin/chess-trainer/book.rs` indexes the book by exact UCI sequence
 prefix and follows the earliest matching line. Consequently, a legal
 transposition into a known position can be reported as “out of book,” and the
 same position reached by two routes would need duplicate schedule state.

@@ -15,10 +15,10 @@ claims.
 | `research/` | Evidence, designs, experiments, limitations, and research artifacts | Runtime production data or uncited product claims |
 | `schemas/` | Versioned interchange schemas and fixtures shared by Lean and Rust | Implementation-specific internal types |
 
-When `~/projects/games/chess` is imported as `engine/`, preserve its history or
-record its source commit and import method in `engine/UPSTREAM.md`. After the
-import, `engine/` is the sole maintained Rust implementation; do not keep a
-second synchronized source tree.
+The former `~/projects/games/chess` repository is imported at `engine/` with
+its history preserved by a non-squashed Git subtree merge. `engine/` is now the
+sole maintained Rust implementation; the old checkout is an archival source,
+not a second tree to synchronize.
 
 ## Canonical cross-layer position identity
 

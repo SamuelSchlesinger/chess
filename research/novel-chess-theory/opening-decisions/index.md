@@ -22,7 +22,7 @@ and human recall remain empirical.
 - [Discriminating experiments](experiments.md) gives the smallest falsifying
   structural, game-database, engine, and human tests.
 - [Trainer and repertoire design](trainer-design.md) turns those tests into a
-  concrete integration plan for `~/projects/games/chess`.
+  concrete integration plan for the monorepo's `engine/` crate.
 - [Prior work and novelty boundary](literature-and-novelty.md) compares the
   proposal with opening-book learning, opponent modeling, recommendation
   networks, robust control, and chess-memory research.
@@ -107,7 +107,7 @@ should deliberately present transposed routes and near-neighbor deviations.
 
 ## Product recommendation
 
-The existing trainer in `~/projects/games/chess` is already a strong execution
+The existing trainer in `engine/` is already a strong execution
 base: it has full legality, FEN/PGN/SAN interop, a warm UCI engine, MultiPV
 analysis, and a browser drill loop. Its current opening layer is intentionally
 small and sequence-based: 21 embedded main lines, an opponent that selects the

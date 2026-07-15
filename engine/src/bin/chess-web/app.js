@@ -29,6 +29,12 @@ const S = {
   judgments: null,  // per-move {g, cls} or null
   tok: 0,
   lastGood: null,
+  // play-against-engine mode
+  playMode: false,
+  playerColor: 'w',   // 'w' or 'b': which side the human plays
+  playMovetime: 1000, // ms per engine move
+  playEngineId: null, // engine used for opponent moves
+  engineThinking: false,
 };
 
 const $ = id => document.getElementById(id);
@@ -63,7 +69,11 @@ async function refresh() {
   S.lastGood = { startFen: d.startFen, moves: d.moves, at: d.at };
   S.selected = null;
   renderAll();
-  restartEngine();
+  if (S.playMode && S.outcome.status === 'ongoing' && S.side !== S.playerColor && S.at === S.moves.length) {
+    engineMove();
+  } else {
+    restartEngine();
+  }
 }
 
 function setAt(i) {
@@ -176,6 +186,7 @@ function renderBoard() {
 }
 
 function canMoveFrom(sq) {
+  if (S.playMode && (S.engineThinking || S.side !== S.playerColor)) return false;
   return S.legal.some(m => m.uci.slice(0, 2) === sq);
 }
 
@@ -353,6 +364,10 @@ function numberedSans(fen, sans, decorate) {
 function renderLines() {
   const box = $('lines');
   box.textContent = '';
+  if (S.playMode && S.engineThinking) {
+    box.innerHTML = '<div class="placeholder">engine thinking…</div>';
+    return;
+  }
   if (!S.engineOn) {
     box.innerHTML = '<div class="placeholder">engine off</div>';
     return;
@@ -458,8 +473,18 @@ function renderStatus() {
   let txt;
   if (o.status === 'checkmate') {
     txt = `Checkmate — ${o.winner === 'w' ? 'White' : 'Black'} wins`;
+    if (S.playMode) txt += o.winner === S.playerColor ? ' · You win!' : ' · Engine wins';
   } else if (o.status === 'draw') {
     txt = `Draw — ${o.reason}`;
+  } else if (S.playMode) {
+    if (S.engineThinking) {
+      txt = 'Engine thinking…';
+    } else if (S.side === S.playerColor) {
+      txt = `Your turn · ${S.side === 'w' ? 'White' : 'Black'}${S.check ? ' · check' : ''}`;
+    } else {
+      txt = 'Engine to move';
+    }
+    if (S.at < S.moves.length) txt += ` · viewing ply ${S.at}/${S.moves.length}`;
   } else {
     txt = `${S.side === 'w' ? 'White' : 'Black'} to move${S.check ? ' · check' : ''}`;
     if (S.at < S.moves.length) txt += ` · viewing ply ${S.at}/${S.moves.length}`;
@@ -600,10 +625,72 @@ $('graph').addEventListener('click', e => {
   setAt(Math.round(fx * (S.evals.length - 1)));
 });
 
+// --- play-against-engine mode ---
+
+async function engineMove() {
+  if (S.engineThinking) return;
+  S.engineThinking = true;
+  if (S.es) { S.es.close(); S.es = null; }
+  S.lines = [];
+  renderLines();
+  renderStatus();
+  let d;
+  try {
+    const r = await fetch('/api/bestmove?' + qs({
+      fen: S.startFen, moves: S.moves.join(' '), at: S.at,
+      engine: S.playEngineId, movetime: S.playMovetime,
+    }));
+    d = await r.json();
+  } catch {
+    S.engineThinking = false;
+    renderStatus();
+    return;
+  }
+  S.engineThinking = false;
+  if (d.error || !d.uci) { renderStatus(); return; }
+  play(d.uci);
+}
+
+function enterPlayMode(color, movetime, engineId) {
+  const pc = color === 'r' ? (Math.random() < 0.5 ? 'w' : 'b') : color;
+  S.playMode = true;
+  S.playerColor = pc;
+  S.playMovetime = movetime;
+  S.playEngineId = engineId;
+  S.engineThinking = false;
+  $('btn-play').textContent = 'Stop';
+  $('btn-play').classList.add('on');
+  loadPosition('startpos', [], 0);
+}
+
+function exitPlayMode() {
+  S.playMode = false;
+  S.engineThinking = false;
+  $('btn-play').textContent = 'Play';
+  $('btn-play').classList.remove('on');
+  restartEngine();
+  renderStatus();
+}
+
 // --- toolbar / dialogs / keys ---
 
-$('btn-new').onclick = () => loadPosition('startpos', [], 0);
+$('btn-new').onclick = () => {
+  if (S.playMode) exitPlayMode();
+  loadPosition('startpos', [], 0);
+};
 $('btn-flip').onclick = () => { S.flipped = !S.flipped; renderBoard(); };
+
+$('btn-play').onclick = () => {
+  if (S.playMode) { exitPlayMode(); } else { $('dlg-play').showModal(); }
+};
+$('play-close').onclick = () => $('dlg-play').close();
+$('play-start').onclick = () => {
+  const color = $('play-color').value;
+  const movetime = +$('play-movetime').value;
+  const engineId = $('play-engine').value;
+  $('dlg-play').close();
+  enterPlayMode(color, movetime, engineId);
+};
 
 $('btn-engine').onclick = () => {
   S.engineOn = !S.engineOn;
@@ -632,17 +719,22 @@ async function loadEngines() {
     return; // selector stays empty; server default applies
   }
   const sel = $('sel-engine');
+  const playSel = $('play-engine');
   sel.textContent = '';
+  playSel.textContent = '';
   for (const e of d.engines) {
     const opt = document.createElement('option');
     opt.value = e.id;
     opt.textContent = e.label;
     sel.appendChild(opt);
+    playSel.appendChild(opt.cloneNode(true));
   }
   let saved = null;
   try { saved = localStorage.getItem('chessWebEngine'); } catch {}
   S.engineId = d.engines.some(e => e.id === saved) ? saved : d.default;
   sel.value = S.engineId;
+  S.playEngineId = S.engineId;
+  playSel.value = S.playEngineId;
 }
 
 $('nav-start').onclick = () => setAt(0);
@@ -712,7 +804,7 @@ function exportPgn() {
 document.addEventListener('keydown', e => {
   const t = document.activeElement;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-  if ($('dlg-fen').open || $('dlg-pgn').open) return;
+  if ($('dlg-fen').open || $('dlg-pgn').open || $('dlg-play').open) return;
   switch (e.key) {
     case 'ArrowLeft': setAt(S.at - 1); e.preventDefault(); break;
     case 'ArrowRight': setAt(S.at + 1); e.preventDefault(); break;

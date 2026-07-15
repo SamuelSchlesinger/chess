@@ -1,7 +1,7 @@
 # Position-graph trainer and personal repertoire
 
 This is the product translation of the research program for the existing
-`~/projects/games/chess` engine and browser trainer.
+the monorepo's `engine/` crate and browser trainer.
 
 ## Replace the sequence book, not the engine stack
 

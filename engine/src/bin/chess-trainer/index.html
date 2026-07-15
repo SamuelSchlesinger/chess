@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opening Trainer — play like Stockfish</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='82' font-size='84'>&#9818;</text></svg>">
+</head>
+<body>
+
+<canvas id="confetti"></canvas>
+
+<header>
+  <h1>&#9818; Opening Trainer</h1>
+  <div class="tagline">Play like Stockfish &mdash; earn the moves it would make</div>
+  <div class="toolbar">
+    <button id="btn-new" class="primary" title="Start a new drill">New drill</button>
+    <button id="btn-hint" title="Ask the engine (costs the reward for this move)">Hint</button>
+    <button id="btn-retry" title="Undo your last move and try again">Retry</button>
+    <button id="btn-flip" title="Flip the board (f)">Flip</button>
+    <button id="btn-finish" title="End the session and see your report">Finish</button>
+    <button id="btn-sound" class="on" title="Toggle sound">&#128266;</button>
+  </div>
+</header>
+
+<main>
+  <div id="left">
+    <div id="board-wrap">
+      <div id="evalbar" title="Stockfish evaluation (White's share)">
+        <span id="evalbar-num">&middot;</span>
+        <div id="evalbar-white"></div>
+      </div>
+      <div id="board-stack">
+        <div id="board"></div>
+        <svg id="arrows" viewBox="0 0 8 8" preserveAspectRatio="none"></svg>
+        <div id="banner"></div>
+        <div id="judging"><div class="spinner"></div><span>Stockfish is judging&hellip;</span></div>
+      </div>
+    </div>
+    <div id="status">Press <b>New drill</b> to begin.</div>
+  </div>
+
+  <aside id="panel">
+    <section id="rank-card">
+      <div class="rank-top">
+        <span id="rank-name">&mdash;</span>
+        <span id="rank-pts">0 XP</span>
+      </div>
+      <div id="rank-bar"><div id="rank-fill"></div></div>
+      <div id="rank-next" class="muted"></div>
+    </section>
+
+    <section id="stat-card">
+      <div class="stat"><div id="stat-streak" class="stat-val">0</div><div class="stat-lbl">streak <span id="streak-fire"></span></div></div>
+      <div class="stat"><div id="stat-match" class="stat-val">&mdash;</div><div class="stat-lbl">engine match</div></div>
+      <div class="stat"><div id="stat-acc" class="stat-val">&mdash;</div><div class="stat-lbl">accuracy</div></div>
+      <div class="stat"><div id="stat-moves" class="stat-val">0</div><div class="stat-lbl">moves graded</div></div>
+    </section>
+
+    <section id="opening-card">
+      <span id="rep-indicator" class="badge rep" hidden></span>
+      <span id="opening-name">&mdash;</span>
+      <span id="book-badge" class="badge" hidden>in book</span>
+    </section>
+
+    <section id="verdict-card">
+      <div id="verdict-placeholder" class="muted">Your move verdicts appear here. Aim for the engine's choice.</div>
+      <div id="verdict" hidden>
+        <div id="verdict-head"><span id="verdict-grade"></span><span id="verdict-eval"></span></div>
+        <div id="verdict-detail" class="muted"></div>
+      </div>
+    </section>
+
+    <section>
+      <div id="movelist"><span class="empty">No moves yet.</span></div>
+      <div id="nav">
+        <button id="nav-start" title="Start (Home)">|&#9664;</button>
+        <button id="nav-back" title="Back (&#8592;)">&#9664;</button>
+        <button id="nav-fwd" title="Forward (&#8594;)">&#9654;</button>
+        <button id="nav-live" title="Back to the live position">Live &#9654;|</button>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<dialog id="dlg-new">
+  <h3>New drill</h3>
+  <div class="row">
+    <label>You play
+      <select id="opt-color">
+        <option value="w">White</option>
+        <option value="b">Black</option>
+        <option value="r">Random</option>
+      </select>
+    </label>
+    <label>Judge strength
+      <select id="opt-strength">
+        <option value="12">Casual &mdash; depth 12, fast</option>
+        <option value="15" selected>Normal &mdash; depth 15</option>
+        <option value="18">Strict &mdash; depth 18, demanding</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <label>Mode
+      <select id="opt-mode">
+        <option value="game">Full game &mdash; play it out</option>
+        <option value="reps">Opening reps &mdash; short, auto-advancing</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <button id="new-start" class="primary">Start</button>
+    <button id="new-close">Cancel</button>
+  </div>
+  <div class="hint">You start from move 1; Stockfish grades every move <em>you</em> play (at a fixed search depth, so the verdict is consistent). When you miss the engine's move it tells you <em>why</em> &mdash; never <em>what</em> to play instead. <b>Reps</b> mode runs short ~6-move openings back-to-back to grind theory.</div>
+</dialog>
+
+<dialog id="dlg-summary">
+  <h3>Session report</h3>
+  <div id="summary-body"></div>
+  <div class="row">
+    <button id="summary-again" class="primary">New drill</button>
+    <button id="summary-close">Close</button>
+  </div>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>

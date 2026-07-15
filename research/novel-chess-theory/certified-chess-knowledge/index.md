@@ -38,7 +38,7 @@ tablebase explanation is prior art: KRK and KBNK rule extraction already exist
   theorem rather than a lookup table.
 - [Theorem-to-trainer integration](training-integration.md): versioned rule and
   exception cards, certificate-backed exercises, spaced review, and the bridge
-  to `~/projects/games/chess`.
+  to the monorepo's `engine/` crate.
 
 ## Planned pilots
 

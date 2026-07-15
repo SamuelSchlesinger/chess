@@ -1,11 +1,55 @@
-# Chess in Lean
+# Chess: proofs, engines, and human training
 
-This project formalizes orthodox chess in Lean 4, validates its executable rules
-against established chess data, and proves accurate theorems useful to real
-players. `Position` contains every field needed to interpret the next move;
-`GameState` retains the complete position history needed for repetition; and
-`Game` adds FIDE conclusions such as checkmate, claims, automatic draws,
-resignation, and time forfeits.
+This monorepo combines an executable Lean 4 formalization of orthodox chess, a
+fast Rust engine and analysis UI, reproducible chess-theory research, and a
+personal training system. Its organizing rule is simple: proofs establish exact
+meaning, engines and corpora provide measured evidence, and pedagogy turns both
+into concise human practice without confusing one kind of claim for another.
+
+| Path | Role |
+|---|---|
+| [`Chess/`](Chess/) | FIDE state, legal moves, game conclusions, exact keys, and proofs |
+| [`engine/`](engine/) | Rust move generation, search, UCI engines, analysis board, and trainer |
+| [`data/`](data/) | Pinned public corpora, hashes, licenses, and validation fixtures |
+| [`research/`](research/) | Cited theory investigations, pilots, limitations, and checked outputs |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Cross-layer identities, schemas, trust boundaries, and data policy |
+
+The Rust history was imported intact under `engine/`; its former checkout at
+`~/projects/games/chess` is no longer a second maintained implementation. Large
+game dumps, nets, tablebases, caches, and build products remain external and
+content-addressed rather than being copied into Git.
+
+## Start here
+
+Run the complete local validation chain from the repository root:
+
+```text
+scripts/check_all.sh
+```
+
+Or run one layer directly:
+
+```text
+lake build
+lake exe chess_validate
+cargo test --manifest-path engine/Cargo.toml
+cargo run --release --manifest-path engine/Cargo.toml --bin chess-web
+cargo run --release --manifest-path engine/Cargo.toml --bin chess-trainer
+```
+
+The current trainer is a validated prototype imported from the Rust project. It
+already grades play with a warm UCI engine and runs short opening repetitions;
+the next version will replace its 21 sequence lines and session-only scores
+with an exact-position repertoire graph and persistent, player-specific review
+schedule. See the [roadmap](ROADMAP.md) and the
+[research synthesis](research/novel-chess-theory/index.md).
+
+## Formal theory
+
+`Position` contains every field needed to interpret the next move; `GameState`
+retains the complete position history needed for repetition; and `Game` adds
+FIDE conclusions such as checkmate, claims, automatic draws, resignation, and
+time forfeits.
 
 The first theory campaign will classify king-and-pawn-versus-king endings and
 derive precise versions of opposition, key-square, rule-of-the-square, and
@@ -38,7 +82,7 @@ in CI. It also proves that projected continuation records remain legal graph
 edges and that corpus weights add over fibres without forcing occurrence names
 or counts to become intrinsic properties of a position.
 
-## Validation
+## Lean validation and datasets
 
 The project has checked UCI parsing, canonical position-dependent SAN parsing
 and rendering, checked raw and effective FEN rendering, and legality-checked
