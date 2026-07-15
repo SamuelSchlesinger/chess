@@ -1,0 +1,32 @@
+Validated 2026-07-14 with chess==1.11.2 and all.tsv SHA-256
+fd710d16bf5cdd750a565ee1a6aba19eb2c7db7d74d7df961f6e00fb1cd04a6e.
+
+distinct histories: 8646
+repetition nodes: 7848
+non-singleton endpoint fibres: 570
+endpoint excess: 798
+single-signature fibres: 557
+mixed-signature fibres: 13
+depth-varying fibres: 3
+maximum excess explainable by ply permutations: 785
+excess requiring more than ply permutations: 13
+catalog-visible direct braid relations: 296
+fibres touched by catalog-visible braids: 241
+excess collapsed by catalog-visible braid closure: 296
+braid components across non-singleton fibres: 1072
+projected directed edges: 8052
+primitive merge nodes: 193
+indegree-excess chords: 205
+merge nodes of indegree 2: 181
+merge nodes of indegree 3: 12
+merge nodes of indegree 4: 0
+merge nodes of indegree 5: 0
+merge nodes of indegree 6: 0
+shortest-basis trace-compatible chords: 201
+shortest-basis depth-changing chords: 1
+shortest-basis direct alternating braids: 84
+shortest-basis relations with at most 3 plies per side: 86
+shortest-basis relations with at most 5 plies per side: 138
+shortest-basis total tail tokens: 2112
+shortest-basis maximum one-side tail: 17
+shortest-basis maximum two-side tail tokens: 34

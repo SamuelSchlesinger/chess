@@ -1,0 +1,3 @@
+3 labeled pieces plus side to move: 499,968
+4 labeled pieces plus side to move: 30,498,048
+5 labeled pieces plus side to move: 1,829,882,880

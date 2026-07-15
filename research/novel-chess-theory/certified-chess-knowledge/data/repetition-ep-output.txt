@@ -1,0 +1,6 @@
+pseudo-legal en passant: yes
+legal en passant: no
+FIDE repetition keys equal: yes
+Polyglot hash with d3:    0xecba303cd610b817
+Polyglot hash without d3: 0xf023eeefeaa828b6
+Polyglot hashes equal: no

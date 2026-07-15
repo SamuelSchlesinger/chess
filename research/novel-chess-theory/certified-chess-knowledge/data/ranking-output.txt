@@ -1,0 +1,30 @@
+Scores are ordinal research judgments on a 1..5 scale.
+Weighted values are divided by the sum of weights (maximum 5.000).
+
+equal:
+  1. Tablebase counterexample and repair: 4.800
+  2. Small-material exact classification: 4.200
+  3. Bounded tactical certificates: 4.000
+  4. Opening route dominance: 4.000
+  5. Generic tablebase rule extraction: 3.200
+
+player-first:
+  1. Tablebase counterexample and repair: 4.875
+  2. Bounded tactical certificates: 4.125
+  3. Opening route dominance: 4.125
+  4. Small-material exact classification: 4.125
+  5. Generic tablebase rule extraction: 3.375
+
+novelty-first:
+  1. Tablebase counterexample and repair: 4.625
+  2. Opening route dominance: 4.375
+  3. Small-material exact classification: 3.875
+  4. Bounded tactical certificates: 3.500
+  5. Generic tablebase rule extraction: 2.750
+
+Lean-first:
+  1. Tablebase counterexample and repair: 4.875
+  2. Small-material exact classification: 4.375
+  3. Bounded tactical certificates: 4.250
+  4. Opening route dominance: 3.875
+  5. Generic tablebase rule extraction: 3.250
