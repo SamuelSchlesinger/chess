@@ -1,0 +1,27 @@
+import Chess.Geometry
+import Chess.Piece
+import Chess.Move
+import Chess.Board
+import Chess.Attack
+import Chess.AttackExamples
+import Chess.Position
+import Chess.Phase
+import Chess.Initial
+import Chess.Rules
+import Chess.RulesExamples
+import Chess.FEN
+import Chess.PerftExamples
+import Chess.Game
+import Chess.GameExamples
+import Chess.Validity
+import Chess.Theory.KingGeometry
+import Chess.Theory.PawnGeometry
+import Chess.Theory.Opposition
+import Chess.Theory.Reti
+import Chess.Theory.RetiExample
+import Chess.Theory.Strategy
+import Chess.Theory.Phase
+import Chess.Theory.PhaseExamples
+import Chess.Theory.Opening
+
+/-! A formally specified model of orthodox chess and machine-checked chess theory. -/
