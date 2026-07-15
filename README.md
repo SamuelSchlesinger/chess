@@ -10,5 +10,6 @@ rook-pawn principles from that classification.
 
 The current structural results include exact king distance, a tempo-correct
 geometric pawn-square theorem, constructive opposition lemmas, a general
-two-deadline Réti pivot theorem, and an irreversible phase grading of the full
-legal position graph. See [THEORY.md](THEORY.md).
+two-deadline Réti pivot theorem, and an irreversible phase grading whose cycle
+theorems live on the clock-erased FIDE repetition graph. See
+[THEORY.md](THEORY.md).

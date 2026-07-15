@@ -14,7 +14,7 @@ theorem e2e4_phase_drop_exact :
 
 /-- The structural theorem, instantiated on the opening move `1. e4`. -/
 theorem e2e4_can_never_lie_on_a_cycle :
-    ¬Position.Reachable (applyUnchecked Initial.position e2e4) Initial.position := by
+    ¬RepetitionReachable (applyUnchecked Initial.position e2e4) Initial.position := by
   apply pawn_move_not_on_cycle Initial.position e2e4 ⟨.white, .pawn⟩
   · native_decide
   · rfl

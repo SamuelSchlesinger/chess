@@ -16,6 +16,16 @@ def lineIsLegal : Position → List Move → Bool
   | position, move :: rest =>
       isLegal position move && lineIsLegal (applyUnchecked position move) rest
 
+/-- Executable extensional equality for complete positions, including fields
+that FIDE repetition identity deliberately ignores. -/
+def sameCompletePosition (left right : Position) : Bool :=
+  left.board.same right.board &&
+  left.turn == right.turn &&
+  left.castlingRights == right.castlingRights &&
+  left.enPassantTarget == right.enPassantTarget &&
+  left.halfmoveClock == right.halfmoveClock &&
+  left.fullmoveNumber == right.fullmoveNumber
+
 /-- Every certified opening line denotes a path through the legal position
 graph. -/
 theorem reachable_playMoves_of_lineIsLegal (position : Position) (moves : List Move)
@@ -43,12 +53,13 @@ theorem kingsideFirst_legal : lineIsLegal Initial.position kingsideFirst := by
 theorem queensideFirst_legal : lineIsLegal Initial.position queensideFirst := by
   native_decide
 
-/-- A genuine opening transposition: the two legal move orders reach the same
-complete `Position`, including turn, castling rights, en-passant state, and move
-clocks—not merely the same piece placement. -/
+/-- A genuine opening transposition: the two legal move orders reach
+extensionally identical complete positions, including turn, castling rights,
+en-passant state, and move clocks—not merely the same piece placement. -/
 theorem independent_knight_development_transposes :
-    playMoves Initial.position kingsideFirst =
-      playMoves Initial.position queensideFirst := by
+    sameCompletePosition
+      (playMoves Initial.position kingsideFirst)
+      (playMoves Initial.position queensideFirst) := by
   native_decide
 
 end OpeningExamples

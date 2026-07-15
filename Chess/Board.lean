@@ -68,5 +68,12 @@ theorem set_at_other (board : Board) {changed target : Square} (h : target ≠ c
 @[simp] theorem same_self (board : Board) : board.same board := by
   simp [same]
 
+/-- Executable board equality is extensionally complete. -/
+theorem eq_of_same {left right : Board} (sameBoard : left.same right) : left = right := by
+  apply Board.ext
+  intro square
+  simp [same] at sameBoard
+  exact sameBoard square (Square.mem_all square)
+
 end Board
 end Chess

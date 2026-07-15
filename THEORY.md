@@ -122,18 +122,22 @@ that every legal move weakly decreases this potential. The proof covers:
 - castling, including the simultaneous king and rook relocation.
 
 The path-level theorem `reachable_phasePotential_le` lifts this local result to
-every finite continuation. Consequently,
-`phasePotential_eq_of_mutuallyReachable` proves that every strongly connected
-component of the legal position graph has constant phase potential. Collapsing
-those components therefore exposes a directed acyclic structure of irreversible
-commitments.
+every finite continuation. Literal `Position` values contain advancing move
+clocks, so cycle statements would be uninteresting on that graph. Instead,
+`RepetitionReachable` projects concrete continuations to FIDE repetition
+identity: board, turn, castling rights, and effective en-passant availability.
+`phasePotential_eq_of_mutuallyRepetitionReachable` then proves that every
+strongly connected component of this clock-erased quotient has constant phase
+potential. Collapsing those components exposes a directed acyclic structure of
+irreversible commitments.
 
 The strict theorem `pawn_move_not_on_cycle` proves that no legal pawn move can
-lie on a directed cycle. For example, Lean computes that `1. e4` consumes
-exactly two units of potential and proves that no legal continuation can return
-to the initial position. In contrast, `1. Nf3` preserves the phase grade. Grade
-preservation is only a necessary condition for reversibility; it does not claim
-that every quiet move can actually be undone.
+lie on a directed cycle of the repetition quotient. For example, Lean computes
+that `1. e4` consumes exactly two units of potential and proves that no legal
+continuation can return to the initial position's FIDE repetition class. In
+contrast, `1. Nf3` preserves the phase grade. Grade preservation is only a
+necessary condition for reversibility; it does not claim that every quiet move
+can actually be undone.
 
 ## Opening lines and transpositions
 
@@ -150,10 +154,11 @@ diamond. Both
 1. Nc3 Nc6 2. Nf3 Nf6
 ```
 
-are certified legal and reach the identical complete `Position`, including
-turn, castling rights, en-passant state, and both clocks. The next general step
-is to replace this computed example with sufficient noninterference conditions
-under which two same-side plans commute around the opponent's replies.
+are certified legal and reach extensionally identical complete positions,
+including turn, castling rights, en-passant state, and both clocks. The next
+general step is to replace this computed example with sufficient
+noninterference conditions under which two same-side plans commute around the
+opponent's replies.
 
 ## Novelty status
 
