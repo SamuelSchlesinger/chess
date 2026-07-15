@@ -20,6 +20,10 @@ use crate::types::{CastlingRights, Color, Square};
 /// castling rights).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct RepetitionKey {
+    /// A normalized Zobrist prefilter. Equality still checks every field below,
+    /// so collisions cannot change the result. Keeping it first makes the
+    /// overwhelmingly common unequal-key comparison a single `u64` check.
+    fingerprint: u64,
     placement: [u8; 64],
     turn: Color,
     castling_rights: CastlingRights,
@@ -28,11 +32,19 @@ pub struct RepetitionKey {
 
 impl RepetitionKey {
     pub(crate) fn from_board(board: &Board) -> RepetitionKey {
+        let en_passant_target = board.effective_en_passant_square();
+        let fingerprint = match (board.ep_square, en_passant_target) {
+            // Remove Polyglot's legality-insensitive EP contribution. It is
+            // zero already when no adjacent pawn exists.
+            (Some(raw), None) => board.hash ^ board.ep_hash_contribution(raw, board.side_to_move),
+            _ => board.hash,
+        };
         RepetitionKey {
+            fingerprint,
             placement: board.mailbox,
             turn: board.side_to_move,
             castling_rights: board.castling,
-            en_passant_target: board.effective_en_passant_square(),
+            en_passant_target,
         }
     }
 

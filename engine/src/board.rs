@@ -287,7 +287,7 @@ impl Board {
     /// The en-passant Zobrist contribution for `ep`, hashed only when a pawn of
     /// `capturer` can actually make the capture (the Polyglot rule).
     #[inline]
-    fn ep_hash_contribution(&self, ep: Square, capturer: Color) -> u64 {
+    pub(crate) fn ep_hash_contribution(&self, ep: Square, capturer: Color) -> u64 {
         let origins = attacks::pawn_attacks(capturer.flip(), ep);
         if (origins & self.pieces_colored(PieceType::Pawn, capturer)).any() {
             zobrist::ep_file_key(ep.file())
