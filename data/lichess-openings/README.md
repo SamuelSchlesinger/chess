@@ -55,3 +55,27 @@ position, requires exact SAN/UCI move equality at every ply, and compares the
 replayed endpoint with the supplied effective EPD. The replay reconstructs
 clocks and complete prior-position history; the four-field EPD is never used as
 a substitute for complete game state.
+
+The same command also constructs the finite prefix graph with Lean's proved
+exact `RepetitionKey` and hard-checks its history, node, fibre, depth, and raw
+en-passant counts. See [`ANALYSIS.md`](ANALYSIS.md) for the resulting structural
+opening-theory observations and the boundary between Lean-checked counts and
+the independently computed edge/SCC report.
+
+## Independent graph reproduction
+
+The read-only `analyze.py` pass reproduces every empirical count in
+`ANALYSIS.md`, including the projected edge fibres, strongly connected
+components, en-passant normalization, endpoint fibres, and name statistics. It
+also checks the concrete transposition and en-passant witnesses. Run it from the
+repository root with the exact upstream dependency:
+
+```text
+python3 -m venv /tmp/chess-opening-analysis
+/tmp/chess-opening-analysis/bin/python -m pip install chess==1.11.2
+/tmp/chess-opening-analysis/bin/python data/lichess-openings/analyze.py
+```
+
+The script verifies both `chess.__version__` and the pinned `all.tsv` SHA-256
+before analysis. It reads the corpus without modifying it and exits nonzero on
+any legality, endpoint, witness, distribution, or aggregate mismatch.

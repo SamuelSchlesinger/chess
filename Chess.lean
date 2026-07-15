@@ -15,10 +15,12 @@ import Chess.FEN
 import Chess.PerftExamples
 import Chess.Game
 import Chess.GameExamples
+import Chess.RepetitionKey
 import Chess.Replay
 import Chess.InteropExamples
 import Chess.SANExamples
 import Chess.OpeningCorpus
+import Chess.OpeningGraph
 import Chess.Validity
 import Chess.Theory.Repetition
 import Chess.Theory.RepetitionGraph
@@ -32,5 +34,7 @@ import Chess.Theory.Phase
 import Chess.Theory.PhaseExamples
 import Chess.Theory.Opening
 import Chess.Theory.OpeningDatabase
+import Chess.Theory.OpeningProjection
+import Chess.Theory.OpeningCorpusExamples
 
 /-! A formally specified model of orthodox chess and machine-checked chess theory. -/

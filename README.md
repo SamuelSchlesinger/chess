@@ -22,12 +22,21 @@ proved quotient move graph and equality of their residual legal languages.
 The opening-database layer now proves a useful design principle. Legal move
 words form a prefix trie, while transposition classes form a graph quotient.
 An observable can be stored unambiguously on a transposition node exactly when
-it is invariant under move order. Legal continuations and position evaluations
-defined only from repetition state qualify; clock-aware evaluations, ply
-number, opening labels, and occurrence records generally do not.
+it is invariant under move order. Legal continuations, perft, and static
+evaluations deliberately defined only from repetition state qualify;
+clock-aware evaluations, ply number, opening labels, and occurrence records
+generally do not.
 This is why a sound opening explorer must retain history-level edges alongside
 position-level nodes rather than overwriting one move order with another. See
 [THEORY.md](THEORY.md).
+
+That specification now has an executable exact key and a finite pushforward
+layer. The pinned opening trie contains 8,646 distinct move histories but only
+7,848 repetition nodes: 570 nodes have multiple observed histories, with up to
+eight move orders in one fibre. Lean recomputes those figures from all prefixes
+in CI. It also proves that projected continuation records remain legal graph
+edges and that corpus weights add over fibres without forcing occurrence names
+or counts to become intrinsic properties of a position.
 
 ## Validation
 
@@ -50,8 +59,11 @@ and exact versus repetition-only opening transpositions. A separately pinned
 CC0 Lichess corpus adds 3,803 named opening lines and 36,840 plies. Lean checks
 every UCI move for legality, resolves every SAN token in its evolving position,
 requires SAN and UCI to denote the same move at every ply, and checks every
-effective EPD endpoint. Source revisions, hashes, licenses, and reproduction
-details are recorded in [`data/PROVENANCE.md`](data/PROVENANCE.md).
+effective EPD endpoint. The same run analyzes all 40,643 row-prefix
+occurrences, deduplicates their move histories, and checks the exact
+transposition-fibre distribution. Source revisions, hashes, licenses,
+reproduction details, and the empirical graph report are recorded in
+[`data/PROVENANCE.md`](data/PROVENANCE.md).
 
 If Stockfish 18 is installed, an optional external cross-check is available:
 

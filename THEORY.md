@@ -330,13 +330,95 @@ which opening statistics can coherently be attached to a chess position, which
 must retain their move-order provenance, and when two explorer entries are safe
 to share legality-based analysis.
 
-`OpeningNode` is presently the proof-level specification of that quotient, not
-an executable opening-explorer store. The graph of all legal lines is infinite
-and its fibres can be infinite because of cycles. A database implementation
-must additionally choose a finite corpus projection, a cycle/depth convention,
-a canonical serialized repetition key, and an executable edge interface; those
-engineering choices should be proved to refine this quotient rather than
-silently replacing it.
+`OpeningNode` remains the proof-level specification of the unrestricted
+quotient. The graph of all legal lines is infinite and its fibres can be
+infinite because of cycles. `RepetitionKey` now supplies the exact hashable key,
+and `OpeningProjection.RecordedContinuation` supplies a checked edge interface,
+but an explorer must still choose a finite corpus, depth/cycle convention, and
+serialization. Those engineering choices should refine this quotient rather
+than silently replacing it.
+
+### Exact keys and finite pushforwards
+
+`RepetitionKey` stores a canonical 64-square placement, turn, castling rights,
+and effective en-passant target. It has lawful decidable equality and hashing.
+`RepetitionKey.ofPosition_eq_iff` proves that two keys are equal exactly when
+the positions satisfy `sameForRepetition`; key equality is information-complete,
+rather than merely comparing a collision-prone engine hash. Its `Hashable`
+instance is only an index—ordinary equality still resolves hash collisions.
+The key descends injectively to `RepetitionNode`, giving the proof quotient an
+executable representation.
+
+Every corpus position is legally reached from the initial position. On that
+domain, the modeled fields have their intended FIDE meaning. For an arbitrary
+manually constructed `Position`, the theorem is stated exactly against the
+project's `sameForRepetition` relation: the type permits malformed states such
+as stale castling-right bits, so correspondence with the external FIDE rule
+should not be claimed without a reachability or well-formedness hypothesis.
+
+A finite database should not pretend that occurrence metadata becomes a
+position invariant after merging. `WeightedObservation` retains a history,
+label, and additive weight. Projection obeys identity, composition, and append
+laws. `fibreWeight` is the pushforward measure: it sums every occurrence weight
+whose legal line has a chosen exact key. `labelsInFibre` deliberately retains
+all labels, including duplicates. Relabelling cannot change aggregate weight,
+and concatenating corpora adds fibre weights. Thus game counts or probability
+mass can be coherently *aggregated* at a node without claiming that the count
+of any one history was already an endpoint-invariant observable.
+
+Recorded continuation observations carry a proof that the move is legal at
+their concrete prefix. `RecordedContinuation.legal_edge` proves that projecting
+such a record produces a genuine edge of the repetition graph. If two
+transposed sources record the same raw move, determinism proves that their
+target nodes—and therefore their exact target keys—agree.
+
+The pinned Lichess trie gives the following checked finite picture:
+
+```text
+40,643 row-prefix occurrences
+ 8,646 distinct move-word histories
+ 7,848 distinct FIDE repetition nodes
+   570 non-singleton transposition fibres
+   798 excess history vertices collapsed
+     8 histories in the largest fibre
+```
+
+There are 7,921 states if raw en-passant targets are retained, so correct
+en-passant normalization reduces the key count by 73. Seventy-one repetition
+fibres combine multiple raw keys: 69 combine two and two combine three. Lean
+recomputes the aggregate counts and the full history-fibre distribution from
+the vendored bytes.
+
+The corpus illustrates three different phenomena. Ordinary move-order diamonds
+commute independent developments. The Caro-Kann routes
+
+```text
+3.Nc3 dxe4 4.Nxe4
+3.Nd2 dxe4 4.Nxe4
+```
+
+reach the same complete position even though their raw move lists are not
+permutations, so commutation alone cannot generate every transposition. A
+Catalan line with a reversible `...Bb4+ Bd2 ...Be7` detour reaches at ply 17 a
+node reached directly at ply 15, giving a real finite-corpus witness that the
+quotient is not ply-graded.
+
+The quotient of this particular truncated trie has 7,848 vertices, 8,052
+unique directed edges, and no directed cycle. That corpus-only DAG fact was
+checked independently by SCC analysis; it is not a theorem about chess. The
+full repetition graph is cyclic, as the proved knight shuffle shows.
+
+Finally, the corpus contains both sides of the en-passant boundary. The move
+orders `1.c4 e5 2.e3` and `1.e3 e5 2.c4` differ in raw target but have equal
+keys because no capture is legal. Conversely,
+`1.Nc3 e5 2.f4 exf4 3.e4` must not merge with
+`1.e4 e5 2.f4 exf4 3.Nc3`: only the first permits `...fxe3 e.p.`. Lean checks
+the equal base fields and unequal exact keys.
+
+The complete empirical report is in
+`data/lichess-openings/ANALYSIS.md`. Its most important statistical caveat is
+that this is a named-opening taxonomy, not a sample of played games. Fibre and
+edge counts measure catalog density, not popularity or move strength.
 
 ## Novelty status
 
@@ -347,3 +429,12 @@ deadlines, nor a machine-checked derivation of the unique `Kg7-f6` prefix from
 such a theorem. `retiPivot_exists_iff` should therefore be treated as a
 candidate novel formulation and formal result, not as a claim that an
 exhaustive historical literature review has been completed.
+
+Transposition graphs themselves are also classical. In particular, François
+Labelle's [exact early-ply counts](https://www.wismuth.com/chess/statistics-positions.html)
+already use the effective-en-passant convention, and computer-chess work has
+long exploited graph sharing. The candidate contribution here is narrower:
+an exact fibre histogram and en-passant differential for a pinned named-opening
+corpus, coupled to machine-checked quotient and pushforward laws. The scoped
+comparison and its non-comparability caveat are recorded in
+`data/lichess-openings/ANALYSIS.md`.

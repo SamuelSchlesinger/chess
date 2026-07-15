@@ -90,3 +90,14 @@ the standard initial `GameState`, resolves each SAN token in lockstep, requires
 SAN and UCI equality at every ply, and compares every endpoint with the four
 effective EPD fields. Opening names are intentionally not treated as unique or
 as position invariants.
+
+The separate Lean opening-graph pass analyzes every prefix occurrence with the
+proved exact `RepetitionKey`. It hard-checks 40,643 row-prefix occurrences,
+8,646 distinct move histories, 7,848 repetition nodes, 570 non-singleton
+fibres, excess 798, maximum fibre size eight, three depth-varying nodes, 7,921
+raw-en-passant keys, and the complete non-singleton multiplicity distribution.
+The derivation, concrete transpositions, label statistics, and independently
+computed edge/SCC results are documented in
+`data/lichess-openings/ANALYSIS.md`. The read-only reproducer
+`data/lichess-openings/analyze.py` requires exactly `chess==1.11.2`, verifies
+the pinned input hash, and hard-checks every empirical count in that report.
