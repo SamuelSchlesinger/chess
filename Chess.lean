@@ -10,12 +10,15 @@ import Chess.Initial
 import Chess.Rules
 import Chess.RulesExamples
 import Chess.UCI
+import Chess.SAN
 import Chess.FEN
 import Chess.PerftExamples
 import Chess.Game
 import Chess.GameExamples
 import Chess.Replay
 import Chess.InteropExamples
+import Chess.SANExamples
+import Chess.OpeningCorpus
 import Chess.Validity
 import Chess.Theory.Repetition
 import Chess.Theory.RepetitionGraph
@@ -28,5 +31,6 @@ import Chess.Theory.Strategy
 import Chess.Theory.Phase
 import Chess.Theory.PhaseExamples
 import Chess.Theory.Opening
+import Chess.Theory.OpeningDatabase
 
 /-! A formally specified model of orthodox chess and machine-checked chess theory. -/

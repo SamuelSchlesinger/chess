@@ -1,8 +1,11 @@
 # Chess in Lean
 
 This project formalizes orthodox chess in Lean 4, validates its executable rules
-against established chess test data, and proves accurate theorems useful to real
-players.
+against established chess data, and proves accurate theorems useful to real
+players. `Position` contains every field needed to interpret the next move;
+`GameState` retains the complete position history needed for repetition; and
+`Game` adds FIDE conclusions such as checkmate, claims, automatic draws,
+resignation, and time forfeits.
 
 The first theory campaign will classify king-and-pawn-versus-king endings and
 derive precise versions of opposition, key-square, rule-of-the-square, and
@@ -14,14 +17,24 @@ two-deadline Réti pivot theorem, and an irreversible phase grading whose cycle
 theorems confine every repetition-returning edge to a quiet kernel of non-pawn,
 non-capturing, castling-right-preserving moves. A legal-line trace algebra
 separately formalizes exact and repetition-node opening transpositions, with a
-proved quotient move graph and equality of their residual legal languages. See
+proved quotient move graph and equality of their residual legal languages.
+
+The opening-database layer now proves a useful design principle. Legal move
+words form a prefix trie, while transposition classes form a graph quotient.
+An observable can be stored unambiguously on a transposition node exactly when
+it is invariant under move order. Legal continuations and position evaluations
+defined only from repetition state qualify; clock-aware evaluations, ply
+number, opening labels, and occurrence records generally do not.
+This is why a sound opening explorer must retain history-level edges alongside
+position-level nodes rather than overwriting one move order with another. See
 [THEORY.md](THEORY.md).
 
 ## Validation
 
-The project has checked UCI parsing, checked raw and effective FEN rendering,
-and legality-checked `GameState` replay. Successful replay is proved to produce
-a path in the legal position graph; it is not merely a parser that updates
+The project has checked UCI parsing, canonical position-dependent SAN parsing
+and rendering, checked raw and effective FEN rendering, and legality-checked
+`GameState` replay. Successful UCI and SAN replay are each proved to produce a
+path in the legal position graph; they are not merely parsers that update
 boards.
 
 Run the Lean development and pinned TSV corpus with:
@@ -31,11 +44,14 @@ lake build
 lake exe chess_validate
 ```
 
-The corpus exercises perft, individual move legality, complete traces,
-history-sensitive repetition and draw thresholds, phase monotonicity, and exact
-versus repetition-only opening transpositions. Source revisions, hashes,
-licenses, and the planned CC0 Lichess opening expansion are recorded in
-[`data/PROVENANCE.md`](data/PROVENANCE.md).
+The small regression corpus exercises perft, individual move legality, complete
+traces, history-sensitive repetition and draw thresholds, phase monotonicity,
+and exact versus repetition-only opening transpositions. A separately pinned
+CC0 Lichess corpus adds 3,803 named opening lines and 36,840 plies. Lean checks
+every UCI move for legality, resolves every SAN token in its evolving position,
+requires SAN and UCI to denote the same move at every ply, and checks every
+effective EPD endpoint. Source revisions, hashes, licenses, and reproduction
+details are recorded in [`data/PROVENANCE.md`](data/PROVENANCE.md).
 
 If Stockfish 18 is installed, an optional external cross-check is available:
 

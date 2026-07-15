@@ -1,4 +1,5 @@
 import Chess.Replay
+import Chess.OpeningCorpus
 import Chess.Theory.Opening
 
 namespace Chess.Validate
@@ -258,9 +259,13 @@ def main : IO Unit := do
   let traceFailures ← validateFile "data/traces.tsv" tracesHeader validateTraceRow
   let openingFailures ←
     validateFile "data/opening_pairs.tsv" openingPairsHeader validateOpeningPairRow
-  let failures := perftFailures ++ moveFailures ++ traceFailures ++ openingFailures
+  let namedOpenings ← OpeningCorpus.validate
+  let failures := perftFailures ++ moveFailures ++ traceFailures ++ openingFailures ++
+    namedOpenings.failures
   if failures.isEmpty then
-    IO.println "validated data/perft.tsv, data/moves.tsv, data/traces.tsv, and data/opening_pairs.tsv"
+    IO.println
+      "validated data/perft.tsv, data/moves.tsv, data/traces.tsv, and data/opening_pairs.tsv"
+    IO.println s!"validated {namedOpenings.source}: {namedOpenings.summary.describe}"
   else
     for failure in failures do
       IO.eprintln s!"FAIL: {failure}"

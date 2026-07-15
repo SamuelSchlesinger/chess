@@ -21,6 +21,16 @@ the supplied start to the final current position. It does not claim that an
 arbitrary supplied prior history is valid or that a record obeys automatic game
 termination; those are distinct record-level obligations.
 
+SAN is deliberately position dependent. `SAN.parse` extracts syntactic
+constraints, `SAN.resolveLegal` searches only compatible sources and returns a
+move bundled with its legality proof, and `SAN.render` computes minimal
+legal-move disambiguation plus semantic check or mate suffixes. Successful SAN
+replay has the same graph-reachability guarantee as UCI replay. The current
+symbolic interface proves resolution legality and replay reachability; a
+universal render/resolve round-trip theorem remains future work. In the
+meantime, focused executable theorems cover castling, file/rank/full-square
+disambiguation, en passant, promotion, check, and mate.
+
 FEN output has two explicit conventions. Raw output preserves the target after
 every double pawn move, as standard FEN requires. Effective output retains a
 target only when en passant is actually legal, which is useful for engine
@@ -36,6 +46,13 @@ draw thresholds, checkmate, phase monotonicity at every ply, and exact versus
 repetition-only opening relations. The optional Stockfish adapter independently
 checks perft, legal-move membership, trace legality, and effective endpoints,
 but is intentionally not used as an oracle for FIDE history semantics.
+
+The pinned Lichess opening layer is a larger executable cross-check rather than
+a theorem oracle. For all 3,803 rows and 36,840 plies, Lean legally replays UCI,
+resolves canonical SAN in the same evolving complete game state, checks by
+computation that both encodings name the same raw move at each ply, and compares
+the endpoint with the supplied effective EPD. The EPD alone is not treated as a
+complete state: clocks and prior history are reconstructed by replay.
 
 ## Exact king distance
 
@@ -268,6 +285,58 @@ every legal common suffix and compose by substitution of further quotient
 diamonds. Raw clocks, ineffective en-passant fields, and `GameState.prior`
 histories remain deliberately outside that conclusion. These quotient classes
 are the right nodes for mining real opening databases.
+
+### The opening trie and its transposition quotient
+
+`LegalLine start` is a node in the prefix trie of legal move words. Its proof
+records that the whole word is legal from `start`, while `endpointNode` maps it
+to a FIDE repetition node. `endpointNode_successor` proves that this map sends
+every trie edge to a legal repetition-graph edge, and
+`endpointNode_range_iff_reachable` identifies its image exactly with the graph
+nodes reachable from the chosen root.
+
+`OpeningNode start` quotients legal lines by equality of their repetition
+endpoints. The induced map back into the repetition graph is injective, so the
+quotient introduces exactly the intended transpositions and no others.
+`openingNode_eq_iff_transposes` states this as an iff theorem.
+
+The quotient's universal property draws a practical database boundary. For an
+observable on move-order histories, the following are equivalent:
+
+```text
+the observable is equal on every pair of transposed lines
+the observable is a well-defined function of OpeningNode
+```
+
+Thus legal continuation languages, perft, and static evaluations defined only
+from repetition state may be cached on quotient nodes. Evaluations that depend
+on the halfmove clock, prior repetitions, or draw availability may not. Game
+counts, move-order labels, opponent-choice frequencies, and the ply at which a
+node was reached belong to trie paths or must be explicitly aggregated over a
+whole finite-corpus fibre. This is not merely a type-design preference: the
+legal knight cycle
+
+```text
+1. Nf3 Nf6 2. Ng1 Ng8
+```
+
+returns to the initial repetition node at ply four, and Lean proves from that
+cycle that ply count cannot factor through `OpeningNode`. The repetition graph
+is therefore not a DAG, even when an opening presentation convention truncates
+or deduplicates it into one.
+
+This framework does not infer that a popular continuation is best. It says
+which opening statistics can coherently be attached to a chess position, which
+must retain their move-order provenance, and when two explorer entries are safe
+to share legality-based analysis.
+
+`OpeningNode` is presently the proof-level specification of that quotient, not
+an executable opening-explorer store. The graph of all legal lines is infinite
+and its fibres can be infinite because of cycles. A database implementation
+must additionally choose a finite corpus projection, a cycle/depth convention,
+a canonical serialized repetition key, and an executable edge interface; those
+engineering choices should be proved to refine this quotient rather than
+silently replacing it.
 
 ## Novelty status
 

@@ -52,9 +52,9 @@ exact versus repetition-only opening transpositions. Their expected fields
 were recomputed by this validator and independently inspected; they do not have
 an external empirical provenance.
 
-## Opening-data expansion
+## Pinned named-opening corpus
 
-For a larger named-opening layer, the intended upstream is
+The vendored named-opening layer comes from
 <https://github.com/lichess-org/chess-openings> at commit
 `292fd0468068f58bb244f7fe1c3e573e493c3c53`, released under CC0. The pinned
 `COPYING.txt` SHA-256 is
@@ -68,7 +68,25 @@ hashes are:
 - `d.tsv`: `58cad40b886bd499717eabcce281d4bfcf00eeadbdc00552f42042cf4aac50d2`
 - `e.tsv`: `f1f8494f488f660e284f23527d5acfbeccdbbc3acc76e74f05d125f39d2f8a74`
 
-Those raw upstream files are not silently folded into the hand-authored
-fixtures here. A future derived corpus should pin the Python and
-`python-chess` versions, generator hash, output hash, and the generator's
-`legal` en-passant convention.
+The repository vendors the upstream generated `dist/all.tsv`, rather than
+silently folding these rows into the hand-authored fixtures. The exact output
+contains one header plus 3,803 rows (803,019 bytes) and has SHA-256
+`fd710d16bf5cdd750a565ee1a6aba19eb2c7db7d74d7df961f6e00fb1cd04a6e`.
+The generator is vendored with SHA-256
+`323c90e60501f2ae55c7e28d76995036242421a921c67335d503c85d2fecf5e8`.
+
+The pinned upstream workflow run `29186614085`, artifact `8258206920`, used
+CPython 3.10.20 and `chess==1.11.2`. The artifact was independently regenerated
+with Python 3.14.5 and the same chess package, producing byte-identical output.
+The `chess-1.11.2.tar.gz` source distribution has SHA-256
+`a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39`.
+The generator uses python-chess's `legal` en-passant convention, matching this
+project's effective EPD rendering. Full reproduction notes and the expiring
+upstream-artifact identifier are in `data/lichess-openings/README.md`.
+
+At validation time Lean checks the exact schema and aggregate counts, requires
+all PGN/UCI/EPD fields to be unique, legally replays all 36,840 UCI plies from
+the standard initial `GameState`, resolves each SAN token in lockstep, requires
+SAN and UCI equality at every ply, and compares every endpoint with the four
+effective EPD fields. Opening names are intentionally not treated as unique or
+as position invariants.
