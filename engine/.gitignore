@@ -1,0 +1,9 @@
+/target
+/data
+/nets
+/neural/.venv
+/data/*.parquet
+__pycache__/
+logs/
+data/
+nets/

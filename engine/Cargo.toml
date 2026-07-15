@@ -1,0 +1,25 @@
+[package]
+name = "chess"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "board_ops"
+harness = false
+
+# Optimized release/bench builds: whole-program LTO and a single codegen unit
+# matter a lot for the bitboard hot paths and for fair algorithm comparisons.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
