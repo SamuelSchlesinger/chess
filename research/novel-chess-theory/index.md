@@ -158,7 +158,7 @@ Authoring, independent review, revision, and executable convergence are
 complete for this research checkpoint. The corpus now makes a narrower but
 stronger claim than its first draft: it contains one concrete algebraic result,
 one corrected structural opening measurement, and one end-to-end semantic
-repair. The initial private player import and bounded diagnostic pass are now
-complete. Player-specific repertoire recommendations and claims of training
-benefit remain deliberately unfrozen until the declared held-out and human tests
-pass.
+repair. The initial private player import, bounded diagnostic pass, and
+persistent six-card review pilot are now complete. Player-specific repertoire
+recommendations and claims of training benefit remain deliberately unfrozen
+until the declared held-out and human tests pass.

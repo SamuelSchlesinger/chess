@@ -37,9 +37,11 @@ games show which rules transfer rather than merely being recalled.
 Current status: a local-by-default, privacy-guarded multi-game Chess.com importer
 now produces an exact metadata profile and an optional bounded-Stockfish ranking
 of candidate review positions plus replay-checked engine-reference cards. The
-current private run generated 24 such cards and a provisional six-position
-manual block. A structured, independently reviewed label set, trainer delivery,
-and tested review schedule are still outstanding.
+current private run generated 24 such cards. Six manually curated positions are
+now delivered through the private diagnostic trainer with commit-before-feedback
+recall, authored explanations, and pass/partial/miss self-grading. Independent
+review of the labels and prospective transfer evidence from games played after
+2026-07-14 remain outstanding.
 
 ## 3. Repertoire as a robust graph
 
@@ -63,6 +65,15 @@ coverage and engine checks; publish every choice with its plan and stop rule.
 Gate: progress survives restart, transposed routes share position mastery,
 route-specific dangers remain separate, and delayed transfer improves against a
 sequence-only control.
+
+Current status: the six-card diagnostic pilot persists an append-only private
+JSONL event log keyed by card and semantic content version. Answer releases are
+fsynced before feedback is returned, so an ungraded reveal or give-up is restored
+after restart instead of becoming a fresh attempt. Its transparent pilot
+scheduler advances passes through 2, 4, 7, 14, 30, and 60 days; a partial resets
+to one day, while a miss or hint resets to ten minutes. Progress therefore
+survives restart. Transposition-shared mastery, route-deviation cards, a control,
+and demonstrated delayed transfer remain open.
 
 ## 5. New chess theory
 

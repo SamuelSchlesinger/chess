@@ -120,11 +120,26 @@ Card
   content_version: semantic SHA-256 digest
   evidence_version: configuration-and-card-evidence SHA-256 digest
 
-ReviewState
-  learner_id: local profile ID
+AnswerReleaseEvent
+  event_id: idempotency token
   card_id: CardId
   content_version: ContentVersion
-  due_at, interval, ease, lapses, last_result
+  shown_at, revealed_at, response, latency, hint_used
+  exact feedback and engine-analysis provenance
+
+ReviewEvent
+  event_id: idempotency token
+  card_id: CardId
+  content_version: ContentVersion
+  evidence_version: EvidenceVersion
+  shown_at, reviewed_at, response, latency, hint_used
+  submitted_grade, applied_grade
+  prior_schedule, next_schedule
+
+ReviewState
+  key: (CardId, ContentVersion)
+  attempts, pass/partial/miss counts, hints, lapses
+  success_rung, interval, due_at, last_result
 ```
 
 - `position_move` cards are keyed by position, so transpositions do not create
@@ -140,6 +155,19 @@ changes the semantic `content_version` (or creates a new `card_id`) and requires
 an explicit schedule migration. Evidence changes are independently visible via
 `evidence_version`; reproducible engine bundles also carry a shared deterministic
 `analysis_config_version` and timestamped run provenance.
+
+The current personal pilot instantiates this boundary with six private
+engine-diagnostic cards and an append-only JSONL event log. State is a replayed
+projection, not a second mutable source of truth. Its versioned fixed scheduler
+uses pass intervals of 2, 4, 7, 14, 30, and 60 days, one day after a partial,
+and ten minutes after a miss; using a hint forces the applied result to miss.
+The player grades whether the tactical idea was found. A match with one engine
+reference is retained as measured evidence, not promoted to correctness. New
+answer releases are capped over a rolling 24-hour window. The event log has one
+exclusive writer. It fsyncs the exact answer snapshot before emitting feedback,
+restores an ungraded release after restart, and retains it past the ordinary
+pending-attempt timeout. Pending attempts reserve a card and snapshot its prior
+event sequence so duplicate tabs cannot advance it twice.
 
 ## Claim provenance
 
@@ -179,9 +207,11 @@ Required validation chain:
    or all prefixes.
 5. Engine evaluations record engine binary/hash, options, depth or time, and
    position ID. They may inform measured claims but cannot certify best play.
-6. Trainer tests verify graph lookup across transpositions, preservation of
-   route exceptions, stable card IDs, and schedule migration independently of
-   chess-engine grading.
+6. Trainer tests verify card replay and identity, append-log recovery and
+   idempotency, version behavior, and the fixed pilot schedule independently of
+   chess-engine grading. Future graph releases must additionally test lookup
+   across transpositions, preservation of route exceptions, and schedule
+   migration.
 
 A cross-layer mismatch blocks release. It is resolved against the FIDE rule
 and Lean specification, with a regression fixture added before either side is

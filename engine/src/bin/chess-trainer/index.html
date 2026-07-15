@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Opening Trainer — play like Stockfish</title>
+<title>Chess Trainer</title>
+<meta name="review-token" content="__CHESS_REVIEW_TOKEN__">
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='82' font-size='84'>&#9818;</text></svg>">
 </head>
@@ -12,14 +13,16 @@
 <canvas id="confetti"></canvas>
 
 <header>
-  <h1>&#9818; Opening Trainer</h1>
-  <div class="tagline">Play like Stockfish &mdash; earn the moves it would make</div>
+  <h1>&#9818; Chess Trainer</h1>
+  <div id="tagline" class="tagline">Play like Stockfish &mdash; earn the moves it would make</div>
   <div class="toolbar">
+    <span id="privacy-badge" class="privacy-badge" hidden>Private &middot; local</span>
+    <button id="btn-review" title="Review due positions from your games" hidden>Review</button>
     <button id="btn-new" class="primary" title="Start a new drill">New drill</button>
-    <button id="btn-hint" title="Ask the engine (costs the reward for this move)">Hint</button>
-    <button id="btn-retry" title="Undo your last move and try again">Retry</button>
+    <button id="btn-hint" class="free-only" title="Ask the engine (costs the reward for this move)">Hint</button>
+    <button id="btn-retry" class="free-only" title="Undo your last move and try again">Retry</button>
     <button id="btn-flip" title="Flip the board (f)">Flip</button>
-    <button id="btn-finish" title="End the session and see your report">Finish</button>
+    <button id="btn-finish" class="free-only" title="End the session and see your report">Finish</button>
     <button id="btn-sound" class="on" title="Toggle sound">&#128266;</button>
   </div>
 </header>
@@ -35,14 +38,72 @@
         <div id="board"></div>
         <svg id="arrows" viewBox="0 0 8 8" preserveAspectRatio="none"></svg>
         <div id="banner"></div>
-        <div id="judging"><div class="spinner"></div><span>Stockfish is judging&hellip;</span></div>
+        <div id="judging" role="status" aria-live="polite"><div class="spinner"></div><span id="judging-label">Stockfish is judging&hellip;</span></div>
       </div>
     </div>
-    <div id="status">Press <b>New drill</b> to begin.</div>
+    <div id="status" aria-live="polite">Press <b>New drill</b> to begin.</div>
   </div>
 
   <aside id="panel">
-    <section id="rank-card">
+    <section id="review-progress" class="review-only" aria-label="Review queue">
+      <div class="review-progress-head">
+        <strong>Current queue</strong>
+        <span id="review-progress-label" class="muted">Loading&hellip;</span>
+      </div>
+      <div class="review-progress-bar"><div id="review-progress-fill"></div></div>
+      <div id="review-stats" class="review-stat-grid">
+        <div class="stat"><div id="review-due" class="stat-val">&mdash;</div><div class="stat-lbl">due</div></div>
+        <div class="stat"><div id="review-new" class="stat-val">&mdash;</div><div class="stat-lbl">new</div></div>
+        <div class="stat"><div id="review-active" class="stat-val">&mdash;</div><div class="stat-lbl">active</div></div>
+        <div class="stat"><div id="review-done" class="stat-val">&mdash;</div><div class="stat-lbl">done / 24h</div></div>
+      </div>
+    </section>
+
+    <section id="review-prompt-card" class="review-only">
+      <div id="review-tags" class="review-tags"></div>
+      <h2 id="review-prompt" tabindex="-1">Loading your review queue&hellip;</h2>
+      <p id="review-instruction" class="muted">Choose a move, then write the idea you calculated before revealing.</p>
+      <label class="review-field-label" for="review-move-entry">Move <span class="muted">(SAN or UCI keyboard entry)</span></label>
+      <input id="review-move-entry" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="For example: Bg3 or c7g3">
+      <div id="review-staged" class="review-staged muted">No move selected.</div>
+      <label class="review-field-label" for="review-reason">Your private reason</label>
+      <textarea id="review-reason" rows="3" placeholder="What did you see? This text stays in this page; only a yes/no presence check is sent."></textarea>
+      <div class="review-actions">
+        <button id="review-reveal" class="primary" aria-keyshortcuts="Control+Enter Meta+Enter" disabled>Commit &amp; reveal</button>
+        <button id="review-give-up">I don&rsquo;t know</button>
+      </div>
+    </section>
+
+    <section id="review-answer-card" class="review-only" hidden aria-live="polite">
+      <div id="review-result" class="review-result" tabindex="-1"></div>
+      <dl class="review-answer-list">
+        <div><dt>Your choice</dt><dd id="review-choice">&mdash;</dd></div>
+        <div><dt>Bounded reference</dt><dd id="review-reference">&mdash;</dd></div>
+      </dl>
+      <div id="review-explanation" class="review-explanation"></div>
+      <details id="review-lines">
+        <summary>Show engine lines and original-game evidence</summary>
+        <div class="review-line"><strong>Reference line</strong><span id="review-reference-line"></span></div>
+        <div class="review-line"><strong>Original-game line</strong><span id="review-original-line"></span></div>
+        <p id="review-original-note" class="muted"></p>
+      </details>
+      <div id="review-criterion" class="review-criterion"></div>
+      <div id="review-evidence" class="review-evidence muted"></div>
+      <div class="review-grade-prompt">Did your choice satisfy the tactical success criterion?</div>
+      <div id="review-grades" class="review-grade-grid">
+        <button data-review-grade="miss" class="grade-miss" aria-keyshortcuts="1"><strong>Missed</strong><span>1 &middot; didn&rsquo;t see the idea</span></button>
+        <button data-review-grade="partial" class="grade-partial" aria-keyshortcuts="2"><strong>Partial</strong><span>2 &middot; saw only part of it</span></button>
+        <button data-review-grade="pass" class="grade-pass" aria-keyshortcuts="3"><strong>Handled it</strong><span>3 &middot; met the criterion</span></button>
+      </div>
+    </section>
+
+    <section id="review-empty" class="review-only review-empty" hidden>
+      <strong id="review-empty-title">Queue clear</strong>
+      <p id="review-empty-detail" class="muted">No cards are due right now.</p>
+      <button id="review-refresh">Check again</button>
+    </section>
+
+    <section id="rank-card" class="free-only">
       <div class="rank-top">
         <span id="rank-name">&mdash;</span>
         <span id="rank-pts">0 XP</span>
@@ -51,20 +112,20 @@
       <div id="rank-next" class="muted"></div>
     </section>
 
-    <section id="stat-card">
+    <section id="stat-card" class="free-only">
       <div class="stat"><div id="stat-streak" class="stat-val">0</div><div class="stat-lbl">streak <span id="streak-fire"></span></div></div>
       <div class="stat"><div id="stat-match" class="stat-val">&mdash;</div><div class="stat-lbl">engine match</div></div>
       <div class="stat"><div id="stat-acc" class="stat-val">&mdash;</div><div class="stat-lbl">accuracy</div></div>
       <div class="stat"><div id="stat-moves" class="stat-val">0</div><div class="stat-lbl">moves graded</div></div>
     </section>
 
-    <section id="opening-card">
+    <section id="opening-card" class="free-only">
       <span id="rep-indicator" class="badge rep" hidden></span>
       <span id="opening-name">&mdash;</span>
       <span id="book-badge" class="badge" hidden>in book</span>
     </section>
 
-    <section id="verdict-card">
+    <section id="verdict-card" class="free-only">
       <div id="verdict-placeholder" class="muted">Your move verdicts appear here. Aim for the engine's choice.</div>
       <div id="verdict" hidden>
         <div id="verdict-head"><span id="verdict-grade"></span><span id="verdict-eval"></span></div>
@@ -72,7 +133,7 @@
       </div>
     </section>
 
-    <section>
+    <section class="free-only">
       <div id="movelist"><span class="empty">No moves yet.</span></div>
       <div id="nav">
         <button id="nav-start" title="Start (Home)">|&#9664;</button>

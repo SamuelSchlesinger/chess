@@ -1,21 +1,24 @@
-//! Opening Trainer — a "play like Stockfish" drill.
+//! Chess Trainer — free engine play plus private, scheduled diagnostic review.
 //!
 //!   cargo run --release --bin chess-trainer
 //!   cargo run --release --bin chess-trainer -- --port 9000 --engine "stockfish" --hash 256
+//!   scripts/run_personal_trainer.sh
 //!
 //! You start from move 1 and play one side. The opponent walks the main
 //! theory of an embedded opening book; every move *you* play is graded by a
 //! Stockfish engine (centipawn loss versus its own best move) and the browser
-//! rewards you for behaving like the engine. Std-only, like the rest of the
-//! crate: a hand-rolled HTTP/1.1 server (shared with chess-web) drives a warm
-//! Stockfish subprocess and answers a single-page frontend over plain JSON.
+//! rewards you for behaving like the engine.  When private card, deck, and
+//! review-log paths are supplied, a separate mode schedules curated positions
+//! from personal games without exposing their histories to the browser.
 //!
-//! Endpoints (all GET, positions are stateless: `moves` = space/comma UCI):
+//! Free-play positions are stateless: `moves` = space/comma UCI.
 //!   GET /                 the app (embedded index.html / app.js / style.css)
 //!   GET /api/state        position, legal moves, outcome, book/opening info
 //!   GET /api/grade        judge one move: cp-loss, grade, best move, book?
 //!   GET /api/reply        the opponent's move: book main line, else SF best
 //!   GET /api/eval         current eval + best move (the "hint" button)
+//!   GET /api/review/*     answer-hidden queue and progress
+//!   POST /api/review/*    capability-protected reveal and durable self-grade
 
 // The HTTP and UCI plumbing is identical to chess-web's; share the source
 // rather than fork it. (The trainer doesn't use the SSE helpers, hence the
@@ -28,6 +31,9 @@ mod http;
 mod uci;
 
 mod book;
+mod cards;
+mod review;
+mod review_api;
 
 use chess::{Board, Color, Game, Move, Outcome, PieceType};
 use http::{
@@ -35,6 +41,7 @@ use http::{
 };
 use std::io::BufReader;
 use std::net::{Shutdown, TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::thread;
@@ -48,6 +55,8 @@ struct Config {
     /// External engine command line (default: `stockfish`).
     engine_cmd: Vec<String>,
     hash_mb: usize,
+    review_token: String,
+    port: u16,
 }
 
 /// The single warm engine, kept alive between requests so its hash carries
@@ -72,15 +81,24 @@ fn return_engine(engine: UciEngine) {
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
+static REVIEW_API: OnceLock<Mutex<review_api::ReviewApi>> = OnceLock::new();
 
 fn config() -> &'static Config {
-    CONFIG.get_or_init(|| Config { engine_cmd: vec!["stockfish".to_string()], hash_mb: 128 })
+    CONFIG.get_or_init(|| Config {
+        engine_cmd: vec!["stockfish".to_string()],
+        hash_mb: 128,
+        review_token: "tests-do-not-mutate-review-state".to_string(),
+        port: 8001,
+    })
 }
 
 fn main() {
     let mut port: u16 = 8001;
     let mut engine_cmd: Option<Vec<String>> = None;
     let mut hash_mb: usize = 128;
+    let mut cards_path: Option<PathBuf> = None;
+    let mut deck_path: Option<PathBuf> = None;
+    let mut review_log_path: Option<PathBuf> = None;
 
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -104,17 +122,34 @@ fn main() {
                 }
                 None => die("--engine needs a command (UCI engine, e.g. \"stockfish\")"),
             },
+            "--cards" => match args.next() {
+                Some(path) => cards_path = Some(PathBuf::from(path)),
+                None => die("--cards needs a private diagnostic-card bundle path"),
+            },
+            "--deck" => match args.next() {
+                Some(path) => deck_path = Some(PathBuf::from(path)),
+                None => die("--deck needs a private curated-deck path"),
+            },
+            "--review-log" => match args.next() {
+                Some(path) => review_log_path = Some(PathBuf::from(path)),
+                None => die("--review-log needs a private JSONL path"),
+            },
             "--help" | "-h" => {
-                println!(
-                    "usage: chess-trainer [--port N] [--hash MiB] [--engine \"cmd args\"]\n\
-                     Defaults to a `stockfish` on PATH as the judge and opponent fallback."
-                );
+                println!("usage: chess-trainer [--port N] [--hash MiB] [--engine \"cmd args\"]");
+                println!("       [--cards FILE --deck FILE --review-log FILE]");
+                println!("Defaults to a `stockfish` on PATH. Private review requires all three paths.");
                 return;
             }
             other => die(&format!("unknown flag '{other}' (try --help)")),
         }
     }
     hash_mb = hash_mb.clamp(1, 4096);
+
+    let review_paths = match (cards_path, deck_path, review_log_path) {
+        (None, None, None) => None,
+        (Some(cards), Some(deck), Some(log)) => Some((cards, deck, log)),
+        _ => die("private review requires --cards, --deck, and --review-log together"),
+    };
 
     let engine_cmd = engine_cmd.unwrap_or_else(|| vec!["stockfish".to_string()]);
     if !engine_on_path(&engine_cmd[0]) {
@@ -126,7 +161,24 @@ fn main() {
     }
 
     // Initialize the shared config and fail fast on a bad book / dead engine.
-    let _ = CONFIG.set(Config { engine_cmd: engine_cmd.clone(), hash_mb });
+    let review_token = review_api::random_token(32)
+        .unwrap_or_else(|error| die(&format!("cannot initialize review capability: {error}")));
+    let _ = CONFIG.set(Config {
+        engine_cmd: engine_cmd.clone(),
+        hash_mb,
+        review_token,
+        port,
+    });
+    if let Some((cards, deck, log)) = review_paths {
+        let catalog = cards::Catalog::load(&cards, &deck)
+            .unwrap_or_else(|error| die(&format!("cannot load private review deck: {error}")));
+        let review_store = review::ReviewStore::open(&log)
+            .unwrap_or_else(|error| die(&format!("cannot open private review log: {error}")));
+        let api = review_api::ReviewApi::new(catalog, review_store)
+            .unwrap_or_else(|error| die(&format!("cannot restore private review state: {error}")));
+        println!("  private review deck: {}", api.deck_title());
+        let _ = REVIEW_API.set(Mutex::new(api));
+    }
     let openings = book::openings();
     match take_engine(config()) {
         Ok(e) => return_engine(e),
@@ -137,7 +189,7 @@ fn main() {
         Ok(l) => l,
         Err(e) => die(&format!("cannot bind 127.0.0.1:{port}: {e}")),
     };
-    println!("chess-trainer: opening drill at http://127.0.0.1:{port}/");
+    println!("chess-trainer: http://127.0.0.1:{port}/");
     println!("  judge/opponent engine: {}", engine_cmd.join(" "));
     println!("  opening book: {} lines", openings.len());
 
@@ -175,9 +227,20 @@ fn handle_connection(stream: TcpStream) {
     };
 
     let cfg = config();
+    if !allowed_loopback_host(req.header("host"), cfg.port) {
+        let _ = respond_bad_request(&mut stream, "invalid Host for loopback trainer");
+        let _ = stream.shutdown(Shutdown::Both);
+        return;
+    }
     let _ = match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/") | ("GET", "/index.html") => {
-            respond(&mut stream, "200 OK", "text/html; charset=utf-8", INDEX_HTML.as_bytes())
+            let index = INDEX_HTML.replace("__CHESS_REVIEW_TOKEN__", &cfg.review_token);
+            respond(
+                &mut stream,
+                "200 OK",
+                "text/html; charset=utf-8",
+                index.as_bytes(),
+            )
         }
         ("GET", "/app.js") => respond(
             &mut stream,
@@ -192,9 +255,99 @@ fn handle_connection(stream: TcpStream) {
         ("GET", "/api/grade") => json_or_400(&mut stream, handle_grade(&req, cfg)),
         ("GET", "/api/reply") => json_or_400(&mut stream, handle_reply(&req, cfg)),
         ("GET", "/api/eval") => json_or_400(&mut stream, handle_eval(&req, cfg)),
+        ("GET", "/api/review/progress") => json_or_400(&mut stream, handle_review_progress()),
+        ("POST", "/api/review/next") => json_or_400(&mut stream, handle_review_next(&req, cfg)),
+        ("POST", "/api/review/reveal") => json_or_400(&mut stream, handle_review_reveal(&req, cfg)),
+        ("POST", "/api/review/grade") => json_or_400(&mut stream, handle_review_grade(&req, cfg)),
         _ => respond(&mut stream, "404 Not Found", "text/plain", b"not found"),
     };
     let _ = stream.shutdown(Shutdown::Both);
+}
+
+fn with_review_api(
+    action: impl FnOnce(&mut review_api::ReviewApi) -> Result<String, String>,
+) -> Result<String, String> {
+    let service = REVIEW_API
+        .get()
+        .ok_or_else(|| "private review is not configured".to_string())?;
+    let mut service = service
+        .lock()
+        .map_err(|_| "private review service lock is poisoned".to_string())?;
+    action(&mut service)
+}
+
+fn handle_review_progress() -> Result<String, String> {
+    match REVIEW_API.get() {
+        None => Ok("{\"configured\":false}".to_string()),
+        Some(_) => with_review_api(|service| service.progress_json()),
+    }
+}
+
+fn handle_review_next(req: &Request, cfg: &Config) -> Result<String, String> {
+    authorize_review_post(req, cfg)?;
+    let request: review_api::NextRequest = parse_review_body(req)?;
+    match REVIEW_API.get() {
+        None => Ok("{\"configured\":false,\"queue\":{\"due\":0,\"new\":0,\"active\":0,\"reviewed24h\":0},\"card\":null}".to_string()),
+        Some(_) => with_review_api(|service| service.next_json(request)),
+    }
+}
+
+fn authorize_review_post(req: &Request, cfg: &Config) -> Result<(), String> {
+    if let Some(origin) = req.header("origin")
+        && !allowed_loopback_origin(origin, cfg.port)
+    {
+        return Err("invalid Origin for loopback trainer".to_string());
+    }
+    let content_type = req.header("content-type").unwrap_or_default();
+    if !content_type
+        .split(';')
+        .next()
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"))
+    {
+        return Err("review mutations require application/json".to_string());
+    }
+    if req.header("x-chess-review-token") != Some(cfg.review_token.as_str()) {
+        return Err("invalid review capability".to_string());
+    }
+    Ok(())
+}
+
+fn allowed_loopback_host(host: Option<&str>, port: u16) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    let host = host.trim().to_ascii_lowercase();
+    host == format!("127.0.0.1:{port}")
+        || host == format!("localhost:{port}")
+        || port == 80 && (host == "127.0.0.1" || host == "localhost")
+}
+
+fn allowed_loopback_origin(origin: &str, port: u16) -> bool {
+    let origin = origin.trim().to_ascii_lowercase();
+    origin == format!("http://127.0.0.1:{port}")
+        || origin == format!("http://localhost:{port}")
+}
+
+fn parse_review_body<T: serde::de::DeserializeOwned>(req: &Request) -> Result<T, String> {
+    serde_json::from_slice(&req.body).map_err(|error| {
+        format!(
+            "invalid review JSON at line {}, column {}",
+            error.line(),
+            error.column()
+        )
+    })
+}
+
+fn handle_review_reveal(req: &Request, cfg: &Config) -> Result<String, String> {
+    authorize_review_post(req, cfg)?;
+    let request: review_api::RevealRequest = parse_review_body(req)?;
+    with_review_api(|service| service.reveal_json(request))
+}
+
+fn handle_review_grade(req: &Request, cfg: &Config) -> Result<String, String> {
+    authorize_review_post(req, cfg)?;
+    let request: review_api::GradeRequest = parse_review_body(req)?;
+    with_review_api(|service| service.grade_json(request))
 }
 
 fn json_or_400(stream: &mut TcpStream, r: Result<String, String>) -> std::io::Result<()> {
@@ -672,6 +825,7 @@ mod tests {
             method: "GET".to_string(),
             path: "/api/state".to_string(),
             query: query.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            headers: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -689,6 +843,36 @@ mod tests {
         // 1. a3 is not in any book line.
         let json = handle_state(&req(&[("moves", "a2a3")])).unwrap();
         assert!(json.contains("\"inBook\":false"), "{json}");
+    }
+
+    #[test]
+    fn loopback_authority_checks_reject_rebinding_origins() {
+        assert!(allowed_loopback_host(Some("127.0.0.1:8001"), 8001));
+        assert!(allowed_loopback_host(Some("LOCALHOST:8001"), 8001));
+        assert!(!allowed_loopback_host(Some("attacker.example:8001"), 8001));
+        assert!(!allowed_loopback_host(None, 8001));
+        assert!(allowed_loopback_origin("http://127.0.0.1:8001", 8001));
+        assert!(!allowed_loopback_origin("http://attacker.example:8001", 8001));
+
+        let cfg = Config {
+            engine_cmd: vec![],
+            hash_mb: 1,
+            review_token: "secret".to_string(),
+            port: 8001,
+        };
+        let mut request = req(&[]);
+        request.method = "POST".to_string();
+        request.headers = vec![
+            ("content-type".to_string(), "application/json".to_string()),
+            ("x-chess-review-token".to_string(), "secret".to_string()),
+            ("origin".to_string(), "http://127.0.0.1:8001".to_string()),
+        ];
+        assert!(authorize_review_post(&request, &cfg).is_ok());
+        request.headers[2].1 = "http://attacker.example:8001".to_string();
+        assert_eq!(
+            authorize_review_post(&request, &cfg).unwrap_err(),
+            "invalid Origin for loopback trainer"
+        );
     }
 
     #[test]

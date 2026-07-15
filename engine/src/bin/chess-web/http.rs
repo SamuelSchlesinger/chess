@@ -12,6 +12,10 @@ pub struct Request {
     pub method: String,
     pub path: String,
     pub query: Vec<(String, String)>,
+    // Used by the trainer's stricter loopback/capability checks; the simpler
+    // chess-web binary shares this parser but does not inspect headers.
+    #[allow(dead_code)]
+    pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
 
@@ -22,6 +26,15 @@ impl Request {
             .iter()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.as_str())
+    }
+
+    /// A request header, matched case-insensitively.
+    #[allow(dead_code)]
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
     }
 
     /// A numeric query parameter, falling back to `default` when absent or
@@ -41,7 +54,7 @@ impl Request {
     }
 }
 
-/// Read one request: request line, headers (only Content-Length matters), body.
+/// Read one request: request line, headers, body.
 pub fn read_request(reader: &mut BufReader<TcpStream>) -> io::Result<Request> {
     let mut line = String::new();
     reader.read_line(&mut line)?;
@@ -53,6 +66,7 @@ pub fn read_request(reader: &mut BufReader<TcpStream>) -> io::Result<Request> {
     }
 
     let mut content_length = 0usize;
+    let mut headers = Vec::new();
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h)? == 0 {
@@ -62,10 +76,13 @@ pub fn read_request(reader: &mut BufReader<TcpStream>) -> io::Result<Request> {
         if h.is_empty() {
             break;
         }
-        if let Some((name, value)) = h.split_once(':')
-            && name.eq_ignore_ascii_case("content-length")
-        {
-            content_length = value.trim().parse().unwrap_or(0);
+        if let Some((name, value)) = h.split_once(':') {
+            let name = name.trim().to_ascii_lowercase();
+            let value = value.trim().to_string();
+            if name == "content-length" {
+                content_length = value.parse().unwrap_or(0);
+            }
+            headers.push((name, value));
         }
     }
     if content_length > MAX_BODY {
@@ -91,6 +108,7 @@ pub fn read_request(reader: &mut BufReader<TcpStream>) -> io::Result<Request> {
         method,
         path: percent_decode(path),
         query,
+        headers,
         body,
     })
 }
@@ -133,7 +151,7 @@ pub fn respond(
 ) -> io::Result<()> {
     write!(
         stream,
-        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nContent-Security-Policy: frame-ancestors 'none'\r\nConnection: close\r\n\r\n",
         body.len()
     )?;
     stream.write_all(body)

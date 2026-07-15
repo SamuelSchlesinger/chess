@@ -22,17 +22,23 @@ The current Rust application already supplies most of the runtime mechanics:
   move-sequence prefix;
 - a warm UCI engine, fixed-depth grading, an opponent fallback, and a
   consequence-first explanation after an error;
-- short “reps” of six trainee moves and session-level accuracy statistics.
+- short “reps” of six trainee moves and session-level accuracy statistics;
+- a private diagnostic-review mode with exact replay-checked positions,
+  answer-hidden recall, and a durable append-only review log whose answer
+  releases survive restart until they are graded.
 
 Those claims are directly checkable in the trainer sources
 [trainer-book][trainer-book] [trainer-main][trainer-main]
-[trainer-app][trainer-app].  The present frontend clears its history for each
-new session and has no persistent scheduler.  Its book is a useful demonstration
-set, not yet a personal repertoire: the earliest matching line chooses the
-opponent reply, and alternative adversarial deviations are not scheduled.
+[trainer-app][trainer-app] [trainer-review][trainer-review].  Free play still
+clears its history for each new session, and its book remains a useful
+demonstration set rather than a personal repertoire: the earliest matching line
+chooses the opponent reply, and alternative adversarial deviations are not
+scheduled. The separate diagnostic mode now persists reviews for a six-card
+private pilot under a transparent fixed schedule. It does not yet implement the
+position graph, route deviations, or transfer experiment proposed here.
 
-The smallest extension is therefore a data contract and a durable review log,
-not another chess engine.
+The smallest extension—a data contract and durable review log rather than
+another chess engine—is therefore implemented for the diagnostic pilot.
 
 ## Knowledge-item contract
 
@@ -85,11 +91,14 @@ Tablebase-backed records use `pinned-oracle` and must additionally name the
 metric, table family, endpoint or file digest, and clock semantics. Assurance
 labels are not silently promoted when a nearby generic theorem exists.
 
-The runtime review row is keyed by
-`(user, item id, semantic content version)` and holds only observations such as
-due time, attempts, response, latency, hints, lapses, and the scheduler's current
-stability estimate. Content changes create a new version rather than silently
-inheriting mastery of a different question.
+Within the current local profile, runtime review state is keyed by
+`(item id, semantic content version)` and is replayed from immutable JSONL
+observations containing answer release, due time, response, latency, hints,
+lapses, and the scheduler decision. Answer feedback is fsynced before it is
+returned and restored after interruption. A future multi-profile store would
+add the user to that key.
+Content changes create a new version rather than silently inheriting mastery of
+a different question.
 Replaceable evidence provenance has an independent version and does not reset
 mastery when the tested semantics are unchanged.
 
@@ -238,8 +247,9 @@ semantics.
 ## Local References
 
 - **trainer-book** — `engine/src/bin/chess-trainer/book.rs`, embedded opening book and prefix-selection logic, imported Rust snapshot inspected 14 July 2026.
-- **trainer-main** — `engine/src/bin/chess-trainer/main.rs`, trainer HTTP API and fixed-depth UCI grading, imported Rust snapshot inspected 14 July 2026.
-- **trainer-app** — `engine/src/bin/chess-trainer/app.js`, session state, six-move reps, and statistics, imported Rust snapshot inspected 14 July 2026.
+- **trainer-main** — `engine/src/bin/chess-trainer/main.rs`, free-play and private-review HTTP API plus fixed-depth UCI grading, working-tree snapshot inspected 15 July 2026.
+- **trainer-app** — `engine/src/bin/chess-trainer/app.js`, free-play reps and persistent diagnostic-review UI, working-tree snapshot inspected 15 July 2026.
+- **trainer-review** — `engine/src/bin/chess-trainer/review.rs`, append-only event log, replayed state, and fixed pilot scheduler, working-tree snapshot inspected 15 July 2026.
 - **fide2023** — International Chess Federation, *FIDE Laws of Chess Taking Effect from 1 January 2023*, Articles 5.2.2, 9.2.3, 9.3, and 9.6, approved 7 August 2022.
 - **lean-repetition-key** — `Chess/RepetitionKey.lean`, exact executable repetition key and equivalence theorem, local formalization repository snapshot inspected 14 July 2026.
 - **python-chess112** — Niklas Fiekas, `python-chess` v1.11.2, `chess/polyglot.py`, released 25 February 2025; the implementation states that legality of a potential en-passant capture is irrelevant to the Polyglot hash. The `chess-1.11.2.tar.gz` SHA-256 used in the validation ledger is `a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39`.
@@ -254,6 +264,7 @@ semantics.
 [trainer-book]: ../../../engine/src/bin/chess-trainer/book.rs
 [trainer-main]: ../../../engine/src/bin/chess-trainer/main.rs
 [trainer-app]: ../../../engine/src/bin/chess-trainer/app.js
+[trainer-review]: ../../../engine/src/bin/chess-trainer/review.rs
 [fide2023]: https://handbook.fide.com/chapter/E012023
 [lean-repetition-key]: ../../../Chess/RepetitionKey.lean
 [python-chess112]: https://github.com/niklasf/python-chess/blob/v1.11.2/chess/polyglot.py

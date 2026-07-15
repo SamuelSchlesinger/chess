@@ -6,18 +6,19 @@ This is the product translation of the research program for the monorepo's
 ## Replace the sequence book, not the engine stack
 
 The current trainer already supplies full legality, SAN/FEN/PGN interop, a warm
-UCI engine, MultiPV grading, and a usable drill loop. Keep those pieces. Replace
-the embedded 21-line, earliest-match opening book with a persistent
-position-graph repertoire.
+UCI engine, MultiPV grading, and a usable drill loop. It also has a separate
+six-card private diagnostic pilot with persistent reviews. Keep those pieces.
+Replace the free-play mode's embedded 21-line, earliest-match opening book with
+a persistent position-graph repertoire.
 
 Current behavior and proposed behavior differ as follows:
 
 | Current | Proposed |
 |---|---|
 | Earliest matching line chooses the opponent move | Weighted opponent replies from a pinned cohort, with deliberate rare-deviation drills |
-| Every repetition starts at move one | Due cards start at the reusable-key decision, with occasional full-route integration reps |
-| “Correct” means close to Stockfish's current first choice | Repertoire correctness and engine regret are separate fields |
-| Session-only engine-match statistics | Persistent recall, latency, coverage, and live-game transfer metrics |
+| Free-play repetitions start at move one; diagnostic cards start at exact game decisions | Due cards start at the reusable-key decision, with occasional full-route integration reps |
+| Free play grades near Stockfish's first choice; diagnostics separate reference match from self-grade | Repertoire correctness and engine regret are separate fields |
+| Free-play statistics are session-only; the diagnostic pilot persists self-grades and latency | Persistent repertoire recall, coverage, and live-game transfer metrics |
 | Move-sequence prefix identifies the opening | Repetition key identifies reusable static knowledge; complete states and routes retain provenance |
 
 ## Minimal data contract

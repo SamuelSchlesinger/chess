@@ -35,13 +35,19 @@ lake exe chess_validate
 cargo test --manifest-path engine/Cargo.toml
 cargo run --release --manifest-path engine/Cargo.toml --bin chess-web
 cargo run --release --manifest-path engine/Cargo.toml --bin chess-trainer
+scripts/run_personal_trainer.sh
 ```
 
-The current trainer is a validated prototype imported from the Rust project. It
-already grades play with a warm UCI engine and runs short opening repetitions;
-the next version will replace its 21 sequence lines and session-only scores
-with an exact-position repertoire graph and persistent, player-specific review
-schedule. See the [roadmap](ROADMAP.md) and the
+The browser trainer now has two layers. Free play retains the imported warm-UCI
+grading and short, sequence-based opening repetitions. Private diagnostic
+review loads replay-checked positions selected from the player's games, hides
+the engine reference until the player commits a move and reason, and persists
+both the answer release and self-grade in an append-only local log. If the
+process stops after revealing, the same answer is restored and must still be
+graded. The initial private pilot has six cards and a deliberately simple fixed
+schedule; it is a training instrument, not yet the transposition-aware
+repertoire graph or evidence of rating gain.
+See the [roadmap](ROADMAP.md) and the
 [research synthesis](research/novel-chess-theory/index.md).
 
 Personal Chess.com exports can be validated and profiled locally with

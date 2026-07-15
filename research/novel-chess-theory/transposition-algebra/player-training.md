@@ -21,13 +21,15 @@ The conditional 205-chord theorem establishes (2) for concrete root-path
 equations. Whether either saves human review after relation and deviation cards
 are added—and whether (3) exists—remains empirical.
 
-## What the current trainer gets wrong
+## What the current opening drill still gets wrong
 
-The trainer in `engine/` currently embeds 21 SAN main lines. Its
-`src/bin/chess-trainer/book.rs` indexes the book by exact UCI sequence
-prefix and follows the earliest matching line. Consequently, a legal
-transposition into a known position can be reported as “out of book,” and the
-same position reached by two routes would need duplicate schedule state.
+The trainer in `engine/` embeds 21 SAN main lines for free play. Its
+`src/bin/chess-trainer/book.rs` indexes that book by exact UCI sequence prefix
+and follows the earliest matching line. Consequently, a legal transposition
+into a known position can be reported as “out of book.” A separate six-card
+diagnostic pilot now has persistent state keyed by card and semantic content
+version, but its cards come from individual game occurrences; it does not yet
+merge equal positions reached by two routes.
 
 The replacement should use two indexes, not one:
 

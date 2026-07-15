@@ -54,8 +54,9 @@ excluding mutable rating and termination headers, so equivalent re-exports do
 not orphan review state. It deliberately does not copy raw movetext into a
 tracked file. The raw PGN remains the local source of truth. Generated private
 files are written with mode `0600`. JSON is the current inspection/interchange
-artifact; a future persistent trainer will use a private, migrated profile
-database with content-addressed imports and occurrence-level history.
+artifact. The diagnostic trainer now keeps its mutable review history in a
+separate private append-only JSONL log; a future profile database may replace
+that log only through an explicit migration.
 
 The diagnostic-card bundle retains complete UCI occurrence history, raw FEN,
 canonical effective `PositionId`, UCI move identities, and the confirmed engine
@@ -79,6 +80,58 @@ deterministic run configuration and input provenance. Each card's
 `evidence_version` additionally hashes that card's reference and played PVs,
 scores, loss bucket, and mate event. Evidence changes therefore remain visible
 without silently changing the question.
+
+## Private diagnostic review
+
+The first personal deck is a six-card, manually curated subset of the 24
+engine-ranked candidates. Run it from the repository root with:
+
+```sh
+scripts/run_personal_trainer.sh
+```
+
+If Stockfish is not on `PATH`, set it explicitly:
+
+```sh
+STOCKFISH=/path/to/stockfish scripts/run_personal_trainer.sh
+```
+
+The script reads `data/private/diagnostic-cards.json` and
+`data/private/initial-six.json`, and appends observations to
+`data/private/review-events-v1.jsonl`. The log is the source of truth; current
+progress is rebuilt by replaying it. Before returning an answer, the server
+fsyncs an answer-release record containing the card and evidence versions,
+timestamps, move response, latency, reference match, hint use, and the exact
+private feedback and analysis provenance that were shown. Grading appends the
+self-grade and resulting schedule decision. An unfinished answer release is
+restored after restart and cannot expire until graded. The log does not store
+the player's typed reason. It is created with mode `0600` and refuses symlink or
+multiply linked targets.
+
+The pilot uses three human judgments: `pass` means the tactical idea was found,
+`partial` means only the move or idea was found, and `miss` means it was not
+found. A hint always applies a miss regardless of the submitted grade. Successive
+passes schedule 2, 4, 7, 14, 30, and 60 days; partial schedules one day and
+resets the success rung; miss schedules ten minutes, resets the rung, and adds a
+lapse. These constants are transparent pilot policy, not an optimized model of
+chess memory. The deck's `new_per_day` limit counts durable first answer
+releases in a rolling 24-hour window, avoiding an implicit UTC or
+machine-timezone day. An abandoned prompt whose answer was never revealed does
+not consume that allowance.
+
+Review state is keyed by `(card_id, content_version)`. A semantic change creates
+new state; a change only to `evidence_version` remains visible in later events
+without resetting the schedule. Matching the single engine reference is logged
+as an observation, never treated as proof that another legal move was wrong.
+The local server admits only its exact loopback Host, rejects foreign browser
+Origins, and protects every answer-issuing or state-changing request with an
+in-page capability. The review log is exclusively locked while the trainer is
+running, so a second process cannot append a competing event sequence.
+
+The source games and selected cards are discovery and training data, not a
+held-out test. Games played after 2026-07-14 are the prospective stream for
+checking whether the trained ideas transfer to play. Until that evidence exists,
+the pilot makes no claim of practical improvement or rating gain.
 
 Before publishing any personal artifact, decide separately whether to expose:
 

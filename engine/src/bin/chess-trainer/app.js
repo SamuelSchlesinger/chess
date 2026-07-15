@@ -1,11 +1,12 @@
-// Opening Trainer frontend. The server is stateless (positions are always from
-// the start, passed as a UCI move list); this file owns the drill loop, the
-// grading rewards, and the gamification.
+// Chess Trainer frontend. Free play is stateless (positions are passed as a
+// UCI move list); diagnostic review uses private, server-owned cards and a
+// durable scheduler without sending game histories to the browser.
 'use strict';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const GLYPH = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
 const FILES = 'abcdefgh';
+const REVIEW_CHOICE_COLOR = '#6ea8fe';
 
 const GRADE_COLOR = {
   brilliant: '#21d0c3', best: '#f1c33f', excellent: '#6abf69', great: '#8bc34a',
@@ -65,6 +66,18 @@ const S = {
   dist: zeroDist(),
 };
 
+const R = {
+  configured: false,
+  mode: false,
+  phase: 'idle',       // idle | loading | answering | revealing | grading | saving | empty
+  queue: { due: 0, new: 0, active: 0, reviewed24h: 0 },
+  card: null,
+  staged: null,
+  answer: null,
+  reviewedSession: 0,
+  gen: 0,
+};
+
 function zeroDist() {
   return { brilliant: 0, best: 0, excellent: 0, great: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
 }
@@ -77,6 +90,451 @@ const qs = o => Object.entries(o)
   .join('&');
 const getJSON = async url => (await fetch(url)).json();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const REVIEW_TOKEN = document.querySelector('meta[name="review-token"]')?.content || '';
+
+async function postReview(path, body) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Chess-Review-Token': REVIEW_TOKEN,
+    },
+    body: JSON.stringify(body),
+  });
+  let data;
+  try { data = await response.json(); }
+  catch { data = { error: `request failed (${response.status})` }; }
+  if (!response.ok || data.error) throw new Error(data.error || `request failed (${response.status})`);
+  return data;
+}
+
+// --- private diagnostic review ---
+
+function normalizedQueue(value) {
+  const q = value?.queue || value || {};
+  const count = key => Math.max(0, Number(q[key]) || 0);
+  return {
+    due: count('due'),
+    new: count('new'),
+    active: count('active'),
+    reviewed24h: count('reviewed24h'),
+  };
+}
+
+function renderReviewProgress() {
+  const q = R.queue;
+  $('review-due').textContent = q.due;
+  $('review-new').textContent = q.new;
+  $('review-active').textContent = q.active;
+  $('review-done').textContent = q.reviewed24h;
+  const remaining = q.due + q.new;
+  const windowTotal = q.reviewed24h + remaining;
+  const pct = windowTotal ? 100 * q.reviewed24h / windowTotal : 100;
+  $('review-progress-fill').style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  $('review-progress-label').textContent = remaining
+    ? `${remaining} remaining`
+    : 'queue clear';
+  const label = remaining ? `Review ${remaining}` : 'Review';
+  $('btn-review').textContent = label;
+}
+
+function setReviewTags(tags) {
+  const box = $('review-tags');
+  box.textContent = '';
+  for (const tag of Array.isArray(tags) ? tags : []) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = String(tag).replaceAll('-', ' ');
+    box.appendChild(badge);
+  }
+}
+
+function setReviewMode(on) {
+  R.mode = on;
+  document.body.classList.toggle('review-mode', on);
+  $('btn-review').classList.toggle('primary', on);
+  $('btn-new').classList.toggle('primary', !on);
+  $('btn-new').textContent = on ? 'Free play' : 'New drill';
+  $('tagline').textContent = on
+    ? 'Retrieve decisions from your own games'
+    : 'Play like Stockfish — earn the moves it would make';
+  updateButtons();
+  fitBoard();
+}
+
+function resetFreeMenu() {
+  S.gen++;
+  S.phase = 'menu';
+  S.moves = []; S.sans = []; S.judg = [];
+  S.viewAt = 0; S.fen = START_FEN; S.side = 'w'; S.check = false; S.legal = [];
+  S.lastMove = null; S.selected = null; S.flipped = false;
+  clearArrows(); clearBanner(); showJudging(false);
+  renderBoard(); renderMoves(); renderStatus(); updateButtons();
+}
+
+function leaveReviewMode() {
+  if (!R.mode) return;
+  R.gen++;
+  R.phase = 'idle';
+  R.card = null; R.staged = null; R.answer = null;
+  setReviewMode(false);
+  resetFreeMenu();
+}
+
+async function enterReviewMode() {
+  if (!R.configured) return;
+  S.gen++;
+  R.gen++;
+  R.reviewedSession = 0;
+  setReviewMode(true);
+  showJudging(false);
+  if ($('dlg-new').open) $('dlg-new').close();
+  if ($('dlg-summary').open) $('dlg-summary').close();
+  await loadNextReview();
+}
+
+function resetReviewPanels() {
+  $('review-prompt-card').hidden = false;
+  $('review-answer-card').hidden = true;
+  $('review-empty').hidden = true;
+  $('review-lines').open = false;
+  $('review-move-entry').value = '';
+  $('review-move-entry').disabled = false;
+  $('review-reason').value = '';
+  $('review-reason').disabled = false;
+  $('review-staged').textContent = 'No move selected.';
+  $('review-staged').classList.remove('ready');
+  $('review-reveal').disabled = true;
+  $('review-give-up').disabled = false;
+  for (const button of document.querySelectorAll('[data-review-grade]')) button.disabled = false;
+}
+
+async function loadNextReview() {
+  if (!R.mode) return;
+  const gen = ++R.gen;
+  R.phase = 'loading';
+  R.card = null; R.staged = null; R.answer = null;
+  resetReviewPanels();
+  clearArrows(); clearBanner();
+  $('review-prompt').textContent = 'Loading your review queue…';
+  $('review-instruction').textContent = 'Your game histories remain on the local server.';
+  $('status').textContent = 'Loading the next private review…';
+  S.legal = []; S.selected = null; S.lastMove = null;
+  renderBoard();
+
+  let data;
+  try {
+    data = await postReview('/api/review/next', {});
+  } catch {
+    if (gen !== R.gen || !R.mode) return;
+    showReviewLoadError('Review service is unreachable.');
+    return;
+  }
+  if (gen !== R.gen || !R.mode) return;
+  if (data.error) {
+    showReviewLoadError(data.error);
+    return;
+  }
+  if (data.configured === false) {
+    R.configured = false;
+    showReviewLoadError('No private review deck is configured.');
+    return;
+  }
+  if (data.queue) R.queue = normalizedQueue(data.queue);
+  renderReviewProgress();
+  if (!data.card) {
+    R.phase = 'empty';
+    $('review-prompt-card').hidden = true;
+    $('review-empty').hidden = false;
+    $('review-empty-title').textContent = 'Queue clear';
+    $('review-empty-detail').textContent = R.reviewedSession
+      ? `You reviewed ${R.reviewedSession} position${R.reviewedSession === 1 ? '' : 's'} this session.`
+      : 'No curated cards are due right now.';
+    $('status').textContent = 'Review complete — come back when the scheduler has something due.';
+    S.fen = START_FEN; S.side = 'w'; S.check = false; S.legal = []; S.lastMove = null;
+    renderBoard(); updateButtons();
+    return;
+  }
+
+  const card = data.card;
+  R.card = card;
+  R.phase = 'answering';
+  S.phase = 'review';
+  S.moves = []; S.sans = []; S.judg = []; S.viewAt = 0;
+  S.fen = card.fen || START_FEN;
+  S.side = S.fen.split(/\s+/)[1] || (card.orientation === 'black' ? 'b' : 'w');
+  S.check = Boolean(card.check);
+  S.legal = Array.isArray(card.legal) ? card.legal : [];
+  S.lastMove = null; S.selected = null;
+  S.flipped = card.orientation === 'black' || card.orientation === 'b';
+  setReviewTags(card.tags);
+  $('review-prompt').textContent = typeof card.prompt === 'string'
+    ? card.prompt
+    : (card.prompt?.text || 'What would you play?');
+  $('review-instruction').textContent = 'Choose a move, then write the idea you calculated before revealing.';
+  renderBoard();
+  renderStatus();
+  updateButtons();
+  if (data.recoveredAnswer) {
+    R.phase = 'grading';
+    renderReviewAnswer(data.recoveredAnswer);
+    updateButtons();
+    return;
+  }
+  $('review-prompt').focus({ preventScroll: true });
+}
+
+function showReviewLoadError(message) {
+  R.phase = 'empty';
+  $('review-prompt-card').hidden = true;
+  $('review-answer-card').hidden = true;
+  $('review-empty').hidden = false;
+  $('review-empty-title').textContent = 'Review unavailable';
+  $('review-empty-detail').textContent = message;
+  $('status').textContent = message;
+  updateButtons();
+}
+
+function stageReviewMove(uci, focusReason = false) {
+  if (!R.mode || R.phase !== 'answering') return;
+  const legal = S.legal.find(move => move.uci === uci);
+  if (!legal) return;
+  R.staged = { uci: legal.uci, san: legal.san || legal.uci };
+  S.selected = null;
+  S.lastMove = legal.uci;
+  renderBoard();
+  clearArrows();
+  drawArrow(legal.uci, REVIEW_CHOICE_COLOR);
+  $('review-move-entry').value = R.staged.san;
+  $('review-staged').textContent = `Selected: ${R.staged.san}. Choose another move to change it.`;
+  $('review-staged').classList.add('ready');
+  $('status').textContent = `Selected ${R.staged.san} — write the reason before revealing.`;
+  updateReviewRevealButton();
+  if (focusReason) $('review-reason').focus();
+}
+
+function normalizedReviewMoveText(value) {
+  return String(value).trim().replaceAll('0', 'O').toLocaleLowerCase();
+}
+
+function clearStagedReviewMove() {
+  if (!R.staged) return;
+  R.staged = null;
+  S.lastMove = null;
+  S.selected = null;
+  $('review-staged').textContent = 'No move selected.';
+  $('review-staged').classList.remove('ready');
+  clearArrows();
+  renderBoard();
+  updateReviewRevealButton();
+}
+
+function stagedMoveMatchesEntry() {
+  if (!R.staged) return false;
+  const typed = normalizedReviewMoveText($('review-move-entry').value);
+  return typed === normalizedReviewMoveText(R.staged.uci)
+    || typed === normalizedReviewMoveText(R.staged.san);
+}
+
+function stageTypedReviewMove() {
+  if (!R.mode || R.phase !== 'answering') return;
+  const typed = normalizedReviewMoveText($('review-move-entry').value);
+  if (!typed) {
+    clearStagedReviewMove();
+    return;
+  }
+  const move = S.legal.find(candidate =>
+    candidate.uci.toLocaleLowerCase() === typed
+    || normalizedReviewMoveText(candidate.san) === typed);
+  if (!move) {
+    clearStagedReviewMove();
+    $('status').textContent = 'That is not a legal SAN or UCI move in this position.';
+    $('review-move-entry').select();
+    return;
+  }
+  stageReviewMove(move.uci, true);
+}
+
+function updateReviewRevealButton() {
+  const hasReason = Boolean($('review-reason').value.trim());
+  $('review-reveal').disabled = R.phase !== 'answering' || !R.staged || !hasReason;
+}
+
+function lineText(line) {
+  if (Array.isArray(line)) return line.join(' ');
+  return line == null || line === '' ? '—' : String(line);
+}
+
+function formatEvidence(evidence) {
+  if (!evidence) return '';
+  const bits = [];
+  if (evidence.assurance) bits.push(String(evidence.assurance).replaceAll('-', ' '));
+  if (Number.isFinite(Number(evidence.nodes))) {
+    bits.push(`${Number(evidence.nodes).toLocaleString()} confirmation nodes`);
+  }
+  if (evidence.evidenceVersion) {
+    const digest = String(evidence.evidenceVersion).replace(/^sha256:/, '');
+    bits.push(`evidence ${digest.slice(0, 12)}…`);
+  }
+  if (evidence.analysisConfigVersion) {
+    const digest = String(evidence.analysisConfigVersion).replace(/^sha256:/, '');
+    bits.push(`analysis ${digest.slice(0, 12)}…`);
+  }
+  return bits.join(' · ');
+}
+
+async function revealReview(gaveUp) {
+  if (!R.mode || R.phase !== 'answering' || !R.card) return;
+  const gen = R.gen;
+  const reasonPresent = Boolean($('review-reason').value.trim());
+  if (!gaveUp && (!stagedMoveMatchesEntry() || !reasonPresent)) {
+    clearStagedReviewMove();
+    $('status').textContent = 'Choose a legal move again before revealing.';
+    return;
+  }
+  R.phase = 'revealing';
+  $('review-reveal').disabled = true;
+  $('review-give-up').disabled = true;
+  $('review-move-entry').disabled = true;
+  $('review-reason').disabled = true;
+  $('judging-label').textContent = 'Revealing the stored reference…';
+  showJudging(true);
+  let data;
+  try {
+    data = await postReview('/api/review/reveal', {
+      attemptId: R.card.attemptId,
+      moveUci: gaveUp ? null : R.staged.uci,
+      reasonPresent,
+      gaveUp: Boolean(gaveUp),
+    });
+  } catch (error) {
+    if (gen !== R.gen || !R.mode) return;
+    showJudging(false);
+    R.phase = 'answering';
+    $('review-give-up').disabled = false;
+    $('review-move-entry').disabled = false;
+    $('review-reason').disabled = false;
+    updateReviewRevealButton();
+    $('status').textContent = `Could not reveal: ${error.message}`;
+    return;
+  }
+  if (gen !== R.gen || !R.mode) return;
+  showJudging(false);
+  if (!data.legal) {
+    R.phase = 'answering';
+    $('review-give-up').disabled = false;
+    $('review-move-entry').disabled = false;
+    $('review-reason').disabled = false;
+    R.staged = null; S.lastMove = null;
+    clearArrows(); renderBoard(); updateReviewRevealButton();
+    $('status').textContent = 'That staged move is no longer legal; choose another move.';
+    return;
+  }
+  R.phase = 'grading';
+  renderReviewAnswer(data);
+  updateButtons();
+}
+
+function renderReviewAnswer(data) {
+  R.answer = data;
+  const gaveUp = data.choice == null && data.referenceMatch == null;
+  $('review-prompt-card').hidden = true;
+  $('review-answer-card').hidden = false;
+  const result = $('review-result');
+  result.classList.remove('match', 'different');
+  if (gaveUp) {
+    result.textContent = 'Reference revealed';
+  } else if (data.referenceMatch) {
+    result.textContent = 'Matched the bounded reference';
+    result.classList.add('match');
+  } else {
+    result.textContent = 'Different from the bounded reference';
+    result.classList.add('different');
+  }
+  const committedChoice = data.choice?.san || data.choice?.uci || R.staged?.san || R.staged?.uci;
+  $('review-choice').textContent = gaveUp ? 'No move submitted' : (committedChoice || '—');
+  $('review-reference').textContent = data.reference?.san || data.reference?.uci || '—';
+  $('review-reference-line').textContent = lineText(data.reference?.lineSan);
+  $('review-original-line').textContent = lineText(data.original?.lineSan);
+
+  const originalMove = data.original?.san || data.original?.uci || 'the recorded move';
+  const loss = data.original?.lossCp;
+  const bucket = data.original?.lossBucket ? ` (${data.original.lossBucket} loss bucket)` : '';
+  $('review-original-note').textContent = loss == null
+    ? `In the original game, ${originalMove} was the move selected for review${bucket}.`
+    : `In the original game, ${originalMove} was estimated ${loss} centipawn-equivalent worse than the reference${bucket}. This estimate does not grade a different move you chose today.`;
+
+  const explanation = $('review-explanation');
+  explanation.textContent = data.explanation || '';
+  explanation.hidden = !data.explanation;
+  const criterion = $('review-criterion');
+  criterion.textContent = data.successCriterion ? `Success criterion: ${data.successCriterion}` : '';
+  criterion.hidden = !data.successCriterion;
+  $('review-evidence').textContent = formatEvidence(data.evidence);
+  clearArrows();
+  if (data.reference?.uci) drawArrow(data.reference.uci, GRADE_COLOR.best);
+  $('status').textContent = 'Grade the tactical idea honestly; exact reference agreement is not required.';
+  $('review-result').focus({ preventScroll: true });
+}
+
+function dueText(dueAtMs, intervalMs) {
+  const interval = Number(intervalMs);
+  if (Number.isFinite(interval) && interval > 0) {
+    if (interval < 60 * 60 * 1000) return 'later today';
+    if (interval < 36 * 60 * 60 * 1000) return 'tomorrow';
+    const days = Math.round(interval / (24 * 60 * 60 * 1000));
+    return `in ${days} days`;
+  }
+  const due = Number(dueAtMs);
+  if (!Number.isFinite(due)) return 'on its new schedule';
+  return new Date(due).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+async function gradeReview(outcome) {
+  if (!R.mode || R.phase !== 'grading' || !R.card) return;
+  const gen = R.gen;
+  R.phase = 'saving';
+  for (const button of document.querySelectorAll('[data-review-grade]')) button.disabled = true;
+  let data;
+  try {
+    data = await postReview('/api/review/grade', { attemptId: R.card.attemptId, outcome });
+  } catch (error) {
+    if (gen !== R.gen || !R.mode) return;
+    R.phase = 'grading';
+    for (const button of document.querySelectorAll('[data-review-grade]')) button.disabled = false;
+    $('status').textContent = `Could not save the grade: ${error.message}`;
+    return;
+  }
+  if (gen !== R.gen || !R.mode) return;
+  if (data.progress) R.queue = normalizedQueue(data.progress);
+  renderReviewProgress();
+  R.reviewedSession++;
+  const applied = data.appliedOutcome || outcome;
+  const adjusted = applied !== outcome ? ` Recorded as ${applied} because the reference was revealed.` : '';
+  $('status').textContent = `Saved — this position is due ${dueText(data.dueAtMs, data.intervalMs)}.${adjusted}`;
+  if (S.sound) playGradeSound(applied === 'pass' ? 'excellent' : applied === 'partial' ? 'inaccuracy' : 'mistake');
+  R.phase = 'loading';
+  const scheduledGen = R.gen;
+  setTimeout(() => {
+    if (R.mode && R.gen === scheduledGen) loadNextReview();
+  }, 600);
+}
+
+async function initializeReview() {
+  let data;
+  try { data = await getJSON('/api/review/progress'); }
+  catch { data = null; }
+  if (data && !data.error && data.configured) {
+    R.configured = true;
+    R.queue = normalizedQueue(data.queue || data.progress);
+    $('btn-review').hidden = false;
+    $('privacy-badge').hidden = false;
+    renderReviewProgress();
+    await enterReviewMode();
+    return;
+  }
+  $('dlg-new').showModal();
+}
 
 // --- server state ---
 
@@ -101,6 +559,7 @@ async function refreshView(at) {
 // --- the drill loop ---
 
 function newSession(color, depth, mode) {
+  if (R.mode) leaveReviewMode();
   S.playerColor = color === 'r' ? (Math.random() < 0.5 ? 'w' : 'b') : color;
   S.depth = depth;
   S.mode = mode;
@@ -134,7 +593,8 @@ function nextRep() {
   const m = S.graded ? Math.round(100 * S.matched / S.graded) : 0;
   flashBanner(`REP ${S.repIndex} ✓`, `${S.repIndex} done · ${m}% engine-match so far`, GRADE_COLOR.best);
   if (S.sound) playGradeSound('excellent');
-  setTimeout(startLine, 250);
+  const gen = S.gen;
+  setTimeout(() => { if (!R.mode && gen === S.gen) startLine(); }, 250);
 }
 
 function renderRepIndicator() {
@@ -527,14 +987,22 @@ function renderBoard() {
   }
 }
 
-function canPlay() { return S.phase === 'user' && S.viewAt === S.moves.length; }
+function canPlay() {
+  if (R.mode) return R.phase === 'answering';
+  return S.phase === 'user' && S.viewAt === S.moves.length;
+}
 function canMoveFrom(sq) { return canPlay() && S.legal.some(m => m.uci.slice(0, 2) === sq); }
+
+function submitBoardMove(uci) {
+  if (R.mode) stageReviewMove(uci);
+  else onUserMove(uci);
+}
 
 function tryMove(from, to) {
   const cands = S.legal.filter(m => m.uci.slice(0, 2) === from && m.uci.slice(2, 4) === to);
   if (!cands.length) return false;
   if (cands.length === 1 && cands[0].uci.length === 4) {
-    onUserMove(cands[0].uci);
+    submitBoardMove(cands[0].uci);
   } else {
     showPromotion(from, to);
   }
@@ -549,7 +1017,7 @@ function showPromotion(from, to) {
     b.textContent = GLYPH[p];
     b.style.color = S.side === 'w' ? '#fff' : '#222';
     b.style.background = S.side === 'w' ? '#666' : '#ddd';
-    b.onclick = e => { e.stopPropagation(); overlay.remove(); onUserMove(from + to + p); };
+    b.onclick = e => { e.stopPropagation(); overlay.remove(); submitBoardMove(from + to + p); };
     overlay.appendChild(b);
   }
   overlay.onclick = () => overlay.remove();
@@ -697,6 +1165,18 @@ function gameOverText() {
 }
 
 function renderStatus() {
+  if (R.mode) {
+    const text = {
+      loading: 'Loading the next private review…',
+      answering: `Your move — ${S.side === 'w' ? 'White' : 'Black'}. Calculate checks, captures, and threats before committing.`,
+      revealing: 'Revealing the stored reference…',
+      grading: 'Grade the retrieval honestly: the move and the reason both matter.',
+      saving: 'Saving this review locally…',
+      empty: 'Review complete — come back when the scheduler has something due.',
+    }[R.phase] || 'Private diagnostic review.';
+    $('status').textContent = text;
+    return;
+  }
   let t;
   if (S.phase === 'menu') t = 'Press <b>New drill</b> to begin.';
   else if (S.phase === 'over') t = gameOverText() + ' Press <b>New drill</b> to go again.';
@@ -710,9 +1190,18 @@ function renderStatus() {
   $('status').innerHTML = t;
 }
 
-function showJudging(on) { $('judging').classList.toggle('show', on); }
+function showJudging(on) {
+  if (on && !R.mode) $('judging-label').textContent = 'Stockfish is judging…';
+  $('judging').classList.toggle('show', on);
+  $('board-stack').setAttribute('aria-busy', String(Boolean(on)));
+}
 
 function updateButtons() {
+  if (R.mode) {
+    $('btn-hint').disabled = true;
+    $('btn-retry').disabled = true;
+    return;
+  }
   const live = canPlay();
   $('btn-hint').disabled = !live;
   // retry needs at least one graded move
@@ -889,7 +1378,11 @@ function playRankUp() { arp([523, 659, 784, 1047, 1319, 1568], 0.08, 0.6, 0.13, 
 
 // --- toolbar / dialogs / keys ---
 
-$('btn-new').onclick = () => $('dlg-new').showModal();
+$('btn-new').onclick = () => {
+  if (R.mode) leaveReviewMode();
+  $('dlg-new').showModal();
+};
+$('btn-review').onclick = () => { if (!R.mode) enterReviewMode(); };
 $('new-close').onclick = () => $('dlg-new').close();
 $('new-start').onclick = () => {
   const color = $('opt-color').value;
@@ -899,7 +1392,15 @@ $('new-start').onclick = () => {
   newSession(color, depth, mode);
 };
 
-$('btn-flip').onclick = () => { S.flipped = !S.flipped; renderBoard(); if (S.lastMove) {/* keep arrows in sync */ } };
+$('btn-flip').onclick = () => {
+  S.flipped = !S.flipped;
+  renderBoard();
+  clearArrows();
+  if (R.mode && R.phase === 'answering' && R.staged) drawArrow(R.staged.uci, REVIEW_CHOICE_COLOR);
+  if (R.mode && (R.phase === 'grading' || R.phase === 'saving') && R.answer?.reference?.uci) {
+    drawArrow(R.answer.reference.uci, GRADE_COLOR.best);
+  }
+};
 $('btn-hint').onclick = hint;
 $('btn-retry').onclick = retry;
 $('btn-finish').onclick = () => { if (S.graded) showSummary(); };
@@ -919,10 +1420,43 @@ $('nav-back').onclick = () => navTo(S.viewAt - 1);
 $('nav-fwd').onclick = () => navTo(S.viewAt + 1);
 $('nav-live').onclick = () => navTo(S.moves.length);
 
+$('review-reason').addEventListener('input', updateReviewRevealButton);
+$('review-move-entry').addEventListener('input', () => {
+  if (R.phase === 'answering' && R.staged && !stagedMoveMatchesEntry()) {
+    clearStagedReviewMove();
+  }
+});
+$('review-move-entry').addEventListener('change', stageTypedReviewMove);
+$('review-move-entry').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    stageTypedReviewMove();
+  }
+});
+$('review-reason').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !$('review-reveal').disabled) {
+    e.preventDefault();
+    revealReview(false);
+  }
+});
+$('review-reveal').onclick = () => revealReview(false);
+$('review-give-up').onclick = () => revealReview(true);
+$('review-refresh').onclick = loadNextReview;
+for (const button of document.querySelectorAll('[data-review-grade]')) {
+  button.onclick = () => gradeReview(button.dataset.reviewGrade);
+}
+
 document.addEventListener('keydown', e => {
   const t = document.activeElement;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
   if ($('dlg-new').open || $('dlg-summary').open) return;
+  if (R.mode) {
+    if (e.key === 'f') $('btn-flip').click();
+    else if (R.phase === 'grading' && e.key === '1') gradeReview('miss');
+    else if (R.phase === 'grading' && e.key === '2') gradeReview('partial');
+    else if (R.phase === 'grading' && e.key === '3') gradeReview('pass');
+    return;
+  }
   switch (e.key) {
     case 'ArrowLeft': navTo(S.viewAt - 1); e.preventDefault(); break;
     case 'ArrowRight': navTo(S.viewAt + 1); e.preventDefault(); break;
@@ -935,7 +1469,12 @@ document.addEventListener('keydown', e => {
 });
 
 function fitBoard() {
-  const size = Math.max(320, Math.min(640, window.innerHeight - 150, window.innerWidth - 460));
+  const narrow = window.innerWidth <= 780;
+  const widthAllowance = narrow
+    ? window.innerWidth - (R.mode ? 24 : 58)
+    : window.innerWidth - 460;
+  const heightAllowance = window.innerHeight - (narrow ? 230 : 150);
+  const size = Math.max(240, Math.min(640, heightAllowance, widthAllowance));
   document.documentElement.style.setProperty('--board-size', size + 'px');
 }
 window.addEventListener('resize', () => { fitBoard(); resizeConfetti(); });
@@ -948,4 +1487,4 @@ renderStats();
 renderRank();
 renderStatus();
 updateButtons();
-$('dlg-new').showModal();
+initializeReview();

@@ -113,12 +113,14 @@ should deliberately present transposed routes and near-neighbor deviations.
 
 The existing trainer in `engine/` is already a strong execution
 base: it has full legality, FEN/PGN/SAN interop, a warm UCI engine, MultiPV
-analysis, and a browser drill loop. Its current opening layer is intentionally
-small and sequence-based: 21 embedded main lines, an opponent that selects the
-earliest matching continuation, session-only scoring, and short repetitions
-that restart from move one.
+analysis, a browser drill loop, and a persistent six-card private diagnostic
+pilot. Its free-play opening layer is intentionally small and sequence-based:
+21 embedded main lines, an opponent that selects the earliest matching
+continuation, session-only scoring, and short repetitions that restart from
+move one. The diagnostic pilot starts from exact replayed game positions, but
+it is not yet a repertoire graph or a transfer result.
 
-The next version should make four conceptual changes:
+The repertoire layer should make four conceptual changes:
 
 1. **A repertoire is a policy, not a list of lines.** At our positions it
    records one or more accepted moves; at opponent positions it records the
@@ -129,12 +131,12 @@ The next version should make four conceptual changes:
 3. **Correctness and engine quality are separate.** First ask whether the move
    matches the chosen repertoire; then report its pinned-engine regret. A
    sound personal choice need not be Stockfish's first line on every run.
-4. **Scheduling is persistent and item-specific.** Retrieve due position,
-   deviation, plan, and transposition-transfer cards instead of repeatedly
-   replaying one deterministic main line. Spacing and repeated retrieval have
-   broad empirical support [cepeda06][cepeda06] [karpicke08][karpicke08], but
-   their effectiveness for these chess-specific card types should be measured,
-   not assumed.
+4. **Extend persistent scheduling beyond the diagnostic pilot.** Retrieve due
+   position, deviation, plan, and transposition-transfer cards instead of
+   repeatedly replaying one deterministic main line. Spacing and repeated
+   retrieval have broad empirical support [cepeda06][cepeda06]
+   [karpicke08][karpicke08], but their effectiveness for these chess-specific
+   card types should be measured, not assumed.
 
 The full schema, exercise types, and progression metrics are in
 [Trainer and repertoire design](trainer-design.md).

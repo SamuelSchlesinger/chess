@@ -1206,6 +1206,7 @@ mod tests {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
+            headers: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -1261,6 +1262,7 @@ spanning lines} e5 (1... c5 2. Nf3) 2. Nf3! $14 Nc6 ; line comment
             method: "POST".to_string(),
             path: "/api/pgn".to_string(),
             query: Vec::new(),
+            headers: Vec::new(),
             body: pgn.as_bytes().to_vec(),
         };
         let json = handle_pgn(&r).unwrap();
@@ -1277,6 +1279,7 @@ spanning lines} e5 (1... c5 2. Nf3) 2. Nf3! $14 Nc6 ; line comment
             method: "POST".to_string(),
             path: "/api/pgn".to_string(),
             query: Vec::new(),
+            headers: Vec::new(),
             body: b"1. e4 Kxe7".to_vec(),
         };
         assert!(handle_pgn(&r).is_err());
