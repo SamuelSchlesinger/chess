@@ -113,7 +113,8 @@ instance (state : GameState) : Decidable (DrawClaimAvailable state) := by
   unfold DrawClaimAvailable
   infer_instance
 
-/-- Append a legal move to the history, newest previous position first. -/
+/-- Apply a move without checking legality and append the previous position to
+the history, newest first. Prefer checked replay when importing external moves. -/
 def GameState.afterMove (state : GameState) (move : Move) : GameState where
   current := applyUnchecked state.current move
   prior := state.current :: state.prior

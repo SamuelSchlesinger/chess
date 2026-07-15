@@ -1,0 +1,11 @@
+# Pinned executable move-generation oracles. FENs always contain all six fields.
+id	fen	depth	nodes	source_id
+initial-d1	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1	1	20	stockfish18-standard-suite
+initial-d2	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1	2	400	stockfish18-standard-suite
+initial-d3	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1	3	8902	stockfish18-standard-suite
+kiwipete-d1	r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1	1	48	stockfish18-standard-suite
+kiwipete-d2	r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1	2	2039	stockfish18-standard-suite
+position3-d2	8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1	2	191	stockfish18-standard-suite
+position4-d2	r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1	2	264	stockfish18-standard-suite
+pinned-en-passant-d1	8/8/8/K1Pp3r/8/8/8/7k w - d6 0 1	1	6	local-stockfish18
+promotion-d1	7k/P7/8/8/8/8/8/7K w - - 0 1	1	7	local-stockfish18

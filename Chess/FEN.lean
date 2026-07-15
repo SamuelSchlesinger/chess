@@ -1,5 +1,6 @@
 import Std.Data.String.ToNat
-import Chess.Position
+import Chess.Game
+import Chess.UCI
 
 namespace Chess.FEN
 
@@ -29,28 +30,32 @@ private def emptyCount? : Char → Option Nat
   | '8' => some 8
   | _ => none
 
-private def parseRank (rank : Coordinate) : List Char → Nat → Board → Except String Board
-  | [], file, board =>
+private def parseRank (rank : Coordinate) : List Char → Nat → Bool → Board → Except String Board
+  | [], file, _, board =>
       if file == 8 then .ok board else .error "FEN rank does not contain eight squares"
-  | symbol :: rest, file, board =>
+  | symbol :: rest, file, previousWasEmpty, board =>
       match emptyCount? symbol with
       | some count =>
-          if file + count ≤ 8 then parseRank rank rest (file + count) board
-          else .error "FEN rank extends beyond the board"
+          if previousWasEmpty then
+            .error "adjacent FEN empty-square counts are not canonical"
+          else if file + count ≤ 8 then
+            parseRank rank rest (file + count) true board
+          else
+            .error "FEN rank extends beyond the board"
       | none =>
           match piece? symbol with
           | none => .error s!"invalid FEN piece symbol: {symbol}"
           | some piece =>
               if onBoard : file < 8 then
                 let square : Square := ⟨⟨file, onBoard⟩, rank⟩
-                parseRank rank rest (file + 1) (board.set square (some piece))
+                parseRank rank rest (file + 1) false (board.set square (some piece))
               else
                 .error "FEN rank extends beyond the board"
 
 private def parseRanks : List String → List Coordinate → Board → Except String Board
   | [], [], board => .ok board
   | rankText :: restText, rank :: restRanks, board => do
-      let board ← parseRank rank rankText.toList 0 board
+      let board ← parseRank rank rankText.toList 0 false board
       parseRanks restText restRanks board
   | _, _, _ => .error "FEN placement must contain exactly eight ranks"
 
@@ -124,5 +129,105 @@ def parse (text : String) : Except String Position := do
       else
         .ok { board, turn, castlingRights, enPassantTarget, halfmoveClock, fullmoveNumber }
   | _ => .error "FEN must contain exactly six space-separated fields"
+
+private def pieceChar : Piece → Char
+  | ⟨.white, .king⟩ => 'K'
+  | ⟨.white, .queen⟩ => 'Q'
+  | ⟨.white, .rook⟩ => 'R'
+  | ⟨.white, .bishop⟩ => 'B'
+  | ⟨.white, .knight⟩ => 'N'
+  | ⟨.white, .pawn⟩ => 'P'
+  | ⟨.black, .king⟩ => 'k'
+  | ⟨.black, .queen⟩ => 'q'
+  | ⟨.black, .rook⟩ => 'r'
+  | ⟨.black, .bishop⟩ => 'b'
+  | ⟨.black, .knight⟩ => 'n'
+  | ⟨.black, .pawn⟩ => 'p'
+
+private def emptyRun : Nat → List Char
+  | 0 => []
+  | 1 => ['1']
+  | 2 => ['2']
+  | 3 => ['3']
+  | 4 => ['4']
+  | 5 => ['5']
+  | 6 => ['6']
+  | 7 => ['7']
+  | _ => ['8']
+
+private def renderRank (board : Board) (rank : Coordinate) : String :=
+  let result := Square.allCoordinates.foldl
+    (fun (state : Nat × List Char) file =>
+      match board.pieceAt ⟨file, rank⟩ with
+      | none => (state.1 + 1, state.2)
+      | some piece => (0, state.2 ++ emptyRun state.1 ++ [pieceChar piece]))
+    (0, [])
+  String.ofList (result.2 ++ emptyRun result.1)
+
+private def renderBoard (board : Board) : String :=
+  String.intercalate "/"
+    (([7, 6, 5, 4, 3, 2, 1, 0] : List Coordinate).map (renderRank board))
+
+private def renderTurn : Color → String
+  | .white => "w"
+  | .black => "b"
+
+private def renderCastling (rights : CastlingRights) : String :=
+  let symbols :=
+    (if rights.whiteKingSide then ['K'] else []) ++
+    (if rights.whiteQueenSide then ['Q'] else []) ++
+    (if rights.blackKingSide then ['k'] else []) ++
+    (if rights.blackQueenSide then ['q'] else [])
+  if symbols.isEmpty then "-" else String.ofList symbols
+
+private def renderEnPassant : Option Square → String
+  | none => "-"
+  | some target => UCI.renderSquare target
+
+/-- Which en-passant convention to use when rendering FEN. Standard raw FEN
+records the square passed over by every double pawn move. Some engines instead
+emit that square only when an en-passant capture is actually legal; this is the
+same normalization used by FIDE repetition identity. -/
+inductive EnPassantMode where
+  | raw
+  | effective
+  deriving DecidableEq, Repr
+
+/-- Render all six fields without checking whether the unconstrained Lean
+`Position` is representable by standard FEN. This is intended for diagnostics;
+use `render`, `renderRaw`, or `renderEffective` for interchange. -/
+def renderUnchecked (position : Position) (mode : EnPassantMode := .raw) : String :=
+  let enPassantTarget := match mode with
+    | .raw => position.enPassantTarget
+    | .effective => effectiveEnPassantTarget position
+  String.intercalate " "
+    [renderBoard position.board,
+      renderTurn position.turn,
+      renderCastling position.castlingRights,
+      renderEnPassant enPassantTarget,
+      toString position.halfmoveClock,
+      toString position.fullmoveNumber]
+
+private def validateForRendering (position : Position) : Except String Unit := do
+  if position.fullmoveNumber == 0 then
+    .error "FEN fullmove number must be positive"
+  match position.enPassantTarget with
+  | none => pure ()
+  | some target =>
+      if target.rank.val == 2 || target.rank.val == 5 then
+        pure ()
+      else
+        .error "FEN en-passant target must be on rank 3 or rank 6"
+
+/-- Render a standard six-field FEN after checking the representation-level
+constraints not enforced by the deliberately permissive `Position` structure.
+The default preserves the raw en-passant field. Effective rendering normalizes
+that field, but is not itself a repetition key because FEN retains both clocks. -/
+def render (position : Position) (mode : EnPassantMode := .raw) : Except String String := do
+  validateForRendering position
+  pure (renderUnchecked position mode)
+
+def renderRaw (position : Position) : Except String String := render position .raw
+def renderEffective (position : Position) : Except String String := render position .effective
 
 end Chess.FEN

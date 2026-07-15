@@ -7,6 +7,36 @@ This project separates three kinds of evidence:
 3. player-facing corollaries are proved from those principles rather than copied
    from engine output or an endgame table.
 
+## Evidence and interchange
+
+`UCI.parse_render` proves symbolically that parsing the canonical rendering of
+every raw move returns that move, and `UCI.render_injective` proves that the
+encoding loses no move information. Syntax and position-dependent legality are
+kept separate: checked replay rejects the first illegal ply and preserves the
+full newest-first `GameState` history.
+
+`reachable_of_replayUCI_eq_ok` is the key trust bridge for imported data. A
+successful UCI replay is proved to be a path in the legal position graph from
+the supplied start to the final current position. It does not claim that an
+arbitrary supplied prior history is valid or that a record obeys automatic game
+termination; those are distinct record-level obligations.
+
+FEN output has two explicit conventions. Raw output preserves the target after
+every double pawn move, as standard FEN requires. Effective output retains a
+target only when en passant is actually legal, which is useful for engine
+comparison and agrees with the en-passant component of repetition identity.
+Effective six-field FEN is still not a repetition key because it retains both
+move clocks. Both interchange renderers reject unconstrained Lean positions
+that cannot be represented by standard FEN; an explicitly unchecked renderer
+exists only for diagnostics.
+
+The executable corpus keeps the evidence layers separate. Lean checks perft,
+raw/effective FEN, complete legal traces, retained-history repetition counts,
+draw thresholds, checkmate, phase monotonicity at every ply, and exact versus
+repetition-only opening relations. The optional Stockfish adapter independently
+checks perft, legal-move membership, trace legality, and effective endpoints,
+but is intentionally not used as an oracle for FIDE history semantics.
+
 ## Exact king distance
 
 For squares `s` and `t`, define

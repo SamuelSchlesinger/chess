@@ -4,3 +4,7 @@ defaultTargets = ["Chess"]
 
 [[lean_lib]]
 name = "Chess"
+
+[[lean_exe]]
+name = "chess_validate"
+root = "Chess.Validate"

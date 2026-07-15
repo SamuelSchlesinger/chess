@@ -11,4 +11,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - name: Verify pinned corpus hashes
+        run: sha256sum --check data/SHA256SUMS
       - uses: leanprover/lean-action@v1
+      - name: Validate pinned chess corpus
+        run: lake exe chess_validate

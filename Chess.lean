@@ -9,10 +9,13 @@ import Chess.Phase
 import Chess.Initial
 import Chess.Rules
 import Chess.RulesExamples
+import Chess.UCI
 import Chess.FEN
 import Chess.PerftExamples
 import Chess.Game
 import Chess.GameExamples
+import Chess.Replay
+import Chess.InteropExamples
 import Chess.Validity
 import Chess.Theory.Repetition
 import Chess.Theory.RepetitionGraph

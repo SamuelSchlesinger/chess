@@ -1,0 +1,12 @@
+# `legal` is 1 exactly when checked replay of the single UCI move succeeds.
+id	fen	uci	legal	source_id
+initial-e4	rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1	e2e4	1	uci-2006
+legal-en-passant	8/8/8/K1Pp4/8/8/8/7k w - d6 0 1	c5d6	1	handcrafted-rules
+pinned-en-passant	8/8/8/K1Pp3r/8/8/8/7k w - d6 0 1	c5d6	0	handcrafted-rules
+clear-kingside-castle	4k3/8/8/8/8/8/8/4K2R w K - 0 1	e1g1	1	handcrafted-rules
+castle-through-check	4kr2/8/8/8/8/8/8/4K2R w K - 0 1	e1g1	0	handcrafted-rules
+promotion-missing	7k/P7/8/8/8/8/8/7K w - - 0 1	a7a8	0	handcrafted-rules
+promotion-queen	7k/P7/8/8/8/8/8/7K w - - 0 1	a7a8q	1	handcrafted-rules
+promotion-rook	7k/P7/8/8/8/8/8/7K w - - 0 1	a7a8r	1	handcrafted-rules
+promotion-bishop	7k/P7/8/8/8/8/8/7K w - - 0 1	a7a8b	1	handcrafted-rules
+promotion-knight	7k/P7/8/8/8/8/8/7K w - - 0 1	a7a8n	1	handcrafted-rules
